@@ -126,19 +126,30 @@ def get_change_data(aoi, fc, config_dict):
     files = list(outdir.glob('tmp*results.pickle'))
     gdf = pd.read_pickle(files[0])
     df = pd.DataFrame(columns=gdf.columns)
+    
+    # collect all data into a single dataframe
     for file in outdir.glob('tmp*results.pickle'):
         df2 = pd.read_pickle(file)
         #file.unlink()
         df = pd.concat([df, df2], ignore_index=True)
     
-    # write to pickle with all ts and dates
+    # try to turn columsn into numerical, where possible
+    for col in df.columns:
+        try:
+            df[col] = pd.to_numeric(df[col])
+        except:
+            pass
+
+        # write to pickle with all ts and dates
     df.to_pickle(outdir.joinpath(f'final_results.pickle'))
     
     # write to geo file
-    gpd.GeoDataFrame(
+    gdf = gpd.GeoDataFrame(
                 df.drop(['dates', 'ts'], axis=1), 
                 crs="EPSG:4326", 
                 geometry=df['geometry']
-            ).to_file(
-                outdir.joinpath(f'final_results.gpkg'), driver='GPKG'
             )
+
+    # write to output and return df
+    gdf.to_file(outdir.joinpath(f'final_results.gpkg'), driver='GPKG')
+    print(" Processing has been finished successfully. Check for final_results files in your output directory.")

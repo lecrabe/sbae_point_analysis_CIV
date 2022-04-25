@@ -1,3 +1,5 @@
+from pathlib import Path 
+
 import ee
 import geopandas as gpd
 
@@ -49,15 +51,15 @@ def sample_global_products(points_fc, outfile):
     
     ## MAKE AS A DATAFRAME AND EXPORT
     json = sampled_points.getInfo()
-    df = gpd.GeoDataFrame.from_features(json)
-    df['LON'] = df['geometry'].x
-    df['LAT'] = df['geometry'].y
+    gdf = gpd.GeoDataFrame.from_features(json)
+    gdf['LON'] = gdf['geometry'].x
+    gdf['LAT'] = gdf['geometry'].y
     
     # sort columns for CEO output
-    df['PLOTID'] = df['point_id']
-    cols = df.columns.tolist()
+    gdf['PLOTID'] = gdf['point_id']
+    cols = gdf.columns.tolist()
     cols = [e for e in cols if e not in ('LON', 'LAT', 'PLOTID')]
     new_cols = ['LON', 'LAT', 'PLOTID'] + cols
-    df = df[new_cols]
-    df.to_csv(outfile, index=False)
-    return df
+    gdf = gdf[new_cols]
+    gdf.to_csv(Path.home()/outfile, index=False)
+    return gdf

@@ -7,7 +7,7 @@ def rename_TMF(band):
     return ee.String(band).replace("Dec", "tmf_",'g')
 
 
-def sample_global_products(points_fc, outfile):
+def sample_global_products(points_fc, point_id, outfile=None):
 
     ## Global Forest Change (Hansen et al., 2013)
     gfc_col = ee.Image(
@@ -44,7 +44,7 @@ def sample_global_products(points_fc, outfile):
       "reducer": ee.Reducer.first(),
       "collection": points_fc
     }).select(
-        ['point_id','esa_lc20','gfc_tc00','gfc_loss','gfc_year','gfc_gain',
+        [point_id,'esa_lc20','gfc_tc00','gfc_loss','gfc_year','gfc_gain',
          'tmf_main_cl','tmf_subtypes','tmf_1990','tmf_1995','tmf_2000',
          'tmf_2005','tmf_2010','tmf_2015','tmf_2020','tmf_def_yr','tmf_deg_yr',
          '.geo']);
@@ -56,10 +56,15 @@ def sample_global_products(points_fc, outfile):
     gdf['LAT'] = gdf['geometry'].y
     
     # sort columns for CEO output
-    gdf['PLOTID'] = gdf['point_id']
+    gdf['PLOTID'] = gdf[point_id]
     cols = gdf.columns.tolist()
     cols = [e for e in cols if e not in ('LON', 'LAT', 'PLOTID')]
     new_cols = ['LON', 'LAT', 'PLOTID'] + cols
     gdf = gdf[new_cols]
-    gdf.to_csv(Path.home()/outfile, index=False)
+    if not outfile:
+        outdir = Path.home()/ "module_results" / "sbae_point_analysis"
+        outdir.mkdir(parents=True, exist_ok=True)
+        gdf.to_csv(Path.home()/ "module_results" / "sbae_point_analysis" / "sbae_ceo.csv", index=False)
+    else: 
+        gdf.to_csv(outfile)
     return gdf

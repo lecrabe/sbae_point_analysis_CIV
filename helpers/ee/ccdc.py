@@ -51,10 +51,7 @@ def extract_ccdc(lsat, points_fc, cell, config_dict):
     # get geometry of grid cell and filter points for that
     cell = ee.Geometry.Polygon(cell['coordinates'])
     points = points_fc.filterBounds(cell)
-    nr_points = points.size().getInfo()
-    if nr_points == 0:
-        return
-    
+        
     # create image collection (not being changed)
     lsat = lsat.filterDate(ee.Date(start_monitor).advance(-2, 'year'), ee.Date(end).advance(2, 'year')).filterBounds(cell)
     

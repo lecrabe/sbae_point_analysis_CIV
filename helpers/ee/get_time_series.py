@@ -16,9 +16,6 @@ def get_time_series(imageCollection, points, geometry, config_dict):
     # get geometry of grid cell and filter points for that
     cell = ee.Geometry.Polygon(geometry['coordinates'])
     points = points.filterBounds(geometry)
-    nr_of_points = points.size().getInfo()
-    if nr_of_points == 0:
-        return None, 0
     
     # mask lsat collection for grid cell
     masked_coll = imageCollection.filterBounds(cell)
@@ -54,9 +51,9 @@ def get_time_series(imageCollection, points, geometry, config_dict):
         return None, -1
         
     if len(point_gdf) > 0:
-        return structure_ts_data(point_gdf, point_id_name), nr_of_points
+        return structure_ts_data(point_gdf, point_id_name)
     else:
-        return None, 0
+        return None
     
 
 def structure_ts_data(df, point_id_name):

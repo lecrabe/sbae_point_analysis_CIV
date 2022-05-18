@@ -60,7 +60,7 @@ def cloudMaskLsatSR(image):
         cloudShadow.Not()
             .And(snow.Not())
             .And(cloud.Not())
-            .And(water.Not())
+            #.And(water.Not())
     )
 
 

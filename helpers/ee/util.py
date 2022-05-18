@@ -77,7 +77,7 @@ def replace_bands(image, bands):
     return result
 
 
-def generate_grid(aoi, dx, dy, marginx=0, marginy=0):
+def processing_grid(aoi, dx, dy, marginx=0, marginy=0):
     
     boundbox = aoi.geometry().bounds().buffer(distance=1, proj=ee.Projection('EPSG:4326'))
     

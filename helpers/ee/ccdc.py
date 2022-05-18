@@ -55,51 +55,58 @@ def extract_ccdc(lsat, points_fc, cell, config_dict):
     # create image collection (not being changed)
     lsat = lsat.filterDate(ee.Date(start_monitor).advance(-2, 'year'), ee.Date(end).advance(2, 'year')).filterBounds(cell)
     
-    def get_magnitude(point):
+    #def get_magnitude(point):
 
-        ccdc = ee.Algorithms.TemporalSegmentation.Ccdc(
-            collection=lsat.map(lambda image: image.clip(point)),
-            breakpointBands=['green', 'red', 'nir', 'swir1', 'swir2'],
-            #breakpointBands=['ndvi'],
-            dateFormat=2
-          )
+    ccdc = ee.Algorithms.TemporalSegmentation.Ccdc(
+        collection=lsat, #.map(lambda image: image.clip(point)),
+        breakpointBands=['green', 'red', 'nir', 'swir1', 'swir2'],
+        #breakpointBands=['ndvi'],
+        dateFormat=2
+      )
 
-        # create array of start of monitoring in shape of tEnd
-        tEnd = ccdc.select('tEnd')
-        mon_date_array_start = tEnd.multiply(0).add(ee.Date(start_monitor).millis())
-        mon_date_array_end = tEnd.multiply(0).add(ee.Date(end).advance(2, 'year').millis())
-        # create the date mask
-        date_mask = tEnd.gte(mon_date_array_start).And(tEnd.lte(mon_date_array_end))
-        # use date mask to mask all of ccdc 
-        monitoring_ccdc = get_segments(ccdc, date_mask)
+    # create array of start of monitoring in shape of tEnd
+    tEnd = ccdc.select('tEnd')
+    mon_date_array_start = tEnd.multiply(0).add(ee.Date(start_monitor).millis())
+    mon_date_array_end = tEnd.multiply(0).add(ee.Date(end).advance(2, 'year').millis())
+    # create the date mask
+    date_mask = tEnd.gte(mon_date_array_start).And(tEnd.lte(mon_date_array_end))
+    # use date mask to mask all of ccdc 
+    monitoring_ccdc = get_segments(ccdc, date_mask)
 
-        # mask for highest magnitude in monitoring period
-        magnitude = monitoring_ccdc.select(band + '_magnitude')
-        max_abs_magnitude = (magnitude
-          .abs()
-          .arrayReduce(ee.Reducer.max(), [0])
-          .arrayGet([0])
-          .rename('max_abs_magnitude')
-        )
+    # mask for highest magnitude in monitoring period
+    magnitude = monitoring_ccdc.select(band + '_magnitude')
+    max_abs_magnitude = (magnitude
+      .abs()
+      .arrayReduce(ee.Reducer.max(), [0])
+      .arrayGet([0])
+      .rename('max_abs_magnitude')
+    )
 
-        mask = magnitude.abs().eq(max_abs_magnitude)
-        segment = get_segment(monitoring_ccdc, mask)
-        magnitude = ee.Image(segment.select(['ndvi_magnitude', 'tBreak', 'tEnd']))
+    mask = magnitude.abs().eq(max_abs_magnitude)
+    segment = get_segment(monitoring_ccdc, mask)
+    magnitude = ee.Image(segment.select([band + '_magnitude', 'tBreak', 'tEnd']))
 
-        def ndvi_nan(feature):
-            ndvi = ee.List([feature.get('ndvi'), -9999]).reduce(ee.Reducer.firstNonNull())
-            return feature.set({'ndvi': ndvi, 'imageID': image.id(),})
-
-        return point.set(magnitude.reduceRegion(
-          reducer=ee.Reducer.first(),
-          geometry=point.geometry(),
-          scale=30
-        ))
+    def pixel_value_nan(feature):
+        pixel_value = ee.List([feature.get(band), -9999]).reduce(ee.Reducer.firstNonNull())
+        return feature.set({band: pixel_value})
+#
+        #return point.set(magnitude.reduceRegions(
+        #  reducer=ee.Reducer.first(),
+        #  geometry=point.geometry(),
+        #  scale=30
+        #))
     
+    #cell_fc = points.map(get_magnitude)
+    #url = cell_fc.getDownloadUrl('geojson')
     
-
-    cell_fc = points.map(get_magnitude)
-    url = cell_fc.getDownloadUrl('geojson')
+    sampled_points = magnitude.reduceRegions(**{
+      "reducer": ee.Reducer.first(),
+      "collection": points_fc.filterBounds(cell),
+      "scale": 30,
+      "tileScale": 4
+    }).map(pixel_value_nan)
+    
+    url = sampled_points.getDownloadUrl('geojson')
 
     # Handle downloading the actual pixels.
     r = requests.get(url, stream=True)
@@ -111,5 +118,5 @@ def extract_ccdc(lsat, points_fc, cell, config_dict):
     
     gdf['ccdc_change_date'] = gdf['tBreak'].apply(lambda x: transform_date(x))
     gdf['point_id'] = gdf[point_id_name]
-    gdf['ccdc_magnitude'] = gdf['ndvi_magnitude']
+    gdf['ccdc_magnitude'] = gdf[f'{band}_magnitude']
     return gdf[['ccdc_change_date', 'ccdc_magnitude', 'point_id']]

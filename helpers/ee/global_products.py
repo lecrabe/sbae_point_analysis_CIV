@@ -117,27 +117,6 @@ def sample_global_products_cell(points_fc, cell, config_dict):
         'tmf_2005','tmf_2010','tmf_2015','tmf_2020','tmf_def_yr','tmf_deg_yr'
     ]
     
-    def get_products(point):
-        
-        #def pixel_value_nan(feature):
-        #    
-        #    def feature_value_nan(band):
-        #        pixel_value = ee.List([ee.Feature(feature).get(band), -9999]).reduce(ee.Reducer.firstNonNull())
-        #        return ee.List([band, pixel_value])
-        #    
-        #    # get a list of bands and values for that feature
-        #    _l = ee.List(ee.List(bandlist).map(feature_value_nan))
-        #    # construct keys and values, so we can finally put it into a feature
-        #    keys = ee.List(_l).map(lambda l: ee.List(l).get(0))
-        #    values = ee.List(_l).map(lambda l: ee.Dictionary(l).get(ee.List(l).get(0)))
-        #    return ee.Feature(feature).set(ee.Dictionary.fromLists(keys, values))
-            
-        return glo_ds.select(bandlist).reduceRegion(
-          reducer=ee.Reducer.first(),
-          geometry=point.geometry(),
-          scale=30
-        )#.map(pixel_value_nan)
-    
     sampled_points = glo_ds.reduceRegions(**{
       "reducer": ee.Reducer.first(),
       "collection": points_fc.filterBounds(cell),
@@ -148,7 +127,7 @@ def sample_global_products_cell(points_fc, cell, config_dict):
          'tmf_main_cl','tmf_subtypes','tmf_1990','tmf_1995','tmf_2000',
          'tmf_2005','tmf_2010','tmf_2015','tmf_2020','tmf_def_yr','tmf_deg_yr',
          '.geo']);
-    #cell_fc = points.map(get_products).flatten()
+    
     url = sampled_points.getDownloadUrl('geojson')
     
     # Handle downloading the actual pixels.

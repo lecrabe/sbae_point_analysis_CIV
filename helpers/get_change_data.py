@@ -198,18 +198,18 @@ def get_change_data(aoi, fc, config_dict):
     args_list = [(*l, config_file) for l in list(enumerate(grid))]
     
     # ---------------debug line--------------------------
-    cell_computation([14, grid[14], config_file])
+    #cell_computation([14, grid[14], config_file])
     # ---------------debug line end--------------------------
     
-    #executor = Executor(executor="concurrent_threads", max_workers=config_dict["workers"])
-    #for i, task in enumerate(executor.as_completed(
-    #    func=cell_computation,
-    #    iterable=args_list
-    #)):
-    #    try:
-    #        task.result()
-    #    except ValueError:
-    #        print("gridcell task failed")
+    executor = Executor(executor="concurrent_threads", max_workers=config_dict["workers"])
+    for i, task in enumerate(executor.as_completed(
+        func=cell_computation,
+        iterable=args_list
+    )):
+        try:
+            task.result()
+        except ValueError:
+            print("gridcell task failed")
     
     files = list(outdir.glob('tmp_results*.pickle'))
     gdf = pd.read_pickle(files[0])

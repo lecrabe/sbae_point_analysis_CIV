@@ -21,9 +21,11 @@ from helpers.ts_analysis.helpers import subset_ts
 
 def get_change_data(aoi, fc, config_dict):
     
-    outdir = Path(config_dict['work_dir'])
+    outdir = config_dict['work_dir']
     if outdir is None:
         outdir = Path.home().joinpath('module_results/sbae_point_analysis')
+    else:
+        outdir = Path(outdir)
     
     outdir.mkdir(parents=True, exist_ok=True)
     config_file = str(outdir.joinpath("config.json"))

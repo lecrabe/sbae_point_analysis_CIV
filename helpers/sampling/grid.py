@@ -6,16 +6,32 @@ import pandas as pd
 import geopandas as gpd
 from shapely.geometry import box, Point
 import numpy as np
+from matplotlib import pyplot as plt
 
+
+from dggrid4py import DGGRIDv7
+
+dggrid_instance = DGGRIDv7(
+    executable='helpers/dggrid/src/apps/dggrid/dggrid', 
+    working_dir='/tmp/', 
+    capture_logs=False, 
+    silent=True
+)
 
 def random_point(geometry):
+    
     bounds = geometry.bounds
-    x = (bounds[2] - bounds[0]) * np.random.random_sample(1) + bounds[0]
-    y = (bounds[3] - bounds[1]) * np.random.random_sample(1) + bounds[1]
+    while True:
+    
+        x = (bounds[2] - bounds[0]) * np.random.random_sample(1) + bounds[0]
+        y = (bounds[3] - bounds[1]) * np.random.random_sample(1) + bounds[1]
+        if Point(x, y).within(geometry):
+            break
+            
     return Point(x, y)
     
     
-def generate_samples(aoi, spacing, crs='ESRI:54017', sampling_strategy='systematic'):
+def squared_grid(aoi, spacing, crs='ESRI:54017', sampling_strategy='systematic'):
 
     if isinstance(aoi, ee.FeatureCollection):
         aoi = geemap.ee_to_geopandas(aoi)
@@ -66,6 +82,7 @@ def generate_samples(aoi, spacing, crs='ESRI:54017', sampling_strategy='systemat
         # create rand points in each grid
         gdf['sample_points'] = gdf.geometry.apply(lambda shp: random_point(shp))
         
+    
     # add point id
     print("Adding a unique point ID...")
     gdf['point_id'] = [i for i in range(len(gdf.index))]
@@ -80,6 +97,48 @@ def generate_samples(aoi, spacing, crs='ESRI:54017', sampling_strategy='systemat
     return grid_gdf, point_gdf
 
 
+def hexagonal_grid(aoi, resolution, sampling_strategy='systematic', outcrs='ESRI:54017', projection='ISEA3H'):
+    
+    # in case we have a EE FC
+    if isinstance(aoi, ee.FeatureCollection):
+        aoi = geemap.ee_to_geopandas(aoi)
+    
+    # force lat/lon for dggrid
+    aoi = aoi.to_crs('EPSG:4326')
+    print("Creating hexagonal grid...")
+    grid = dggrid_instance.grid_cell_polygons_for_extent(
+        projection, 
+        resolution, 
+        clip_geom=aoi.dissolve().geometry.values[0]
+    )
+    
+    aoi = aoi.dissolve().to_crs('ESRI:54017')
+    aoi_geom = aoi.iloc[0]['geometry']
+    gdf = grid.to_crs('ESRI:54017')
+
+    if sampling_strategy == 'systematic':
+        # take centroid
+        gdf['sample_points'] = gdf.geometry.centroid
+        
+    elif sampling_strategy == 'random': 
+        # create rand points in each grid
+        gdf['sample_points'] = gdf.geometry.apply(lambda shp: random_point(shp))
+        
+        
+    # add point id
+    print("Adding a unique point ID...")
+    gdf['point_id'] = [i for i in range(len(gdf.index))]
+    
+    # divide to grid and point df
+    grid_gdf = gdf.drop(['sample_points'], axis=1)
+    gdf['geometry'] = gdf['sample_points']
+    point_gdf = gdf.drop(['sample_points'], axis=1)
+    
+    print('Remove points outside AOI...')
+    point_gdf = point_gdf[point_gdf.geometry.within(aoi_geom)]
+    return grid_gdf.to_crs(outcrs), point_gdf.to_crs(outcrs)
+
+
 def split_dataframe(df, chunk_size = 25000): 
         chunks = list()
         num_chunks = len(df) // chunk_size + 1
@@ -92,6 +151,17 @@ def upload_to_ee(gdf, asset_name):
     
     # get users asset root
     asset_root = ee.data.getAssetRoots()[0]['id']
+    
+    # if it is already a feature collection
+    if isinstance(gdf, ee.FeatureCollection):
+        exportTask = ee.batch.Export.table.toAsset(
+                collection = gdf,
+                description = f'sbae_samples',
+                assetId = f'{asset_root}/{asset_name}'
+            )
+
+        exportTask.start()
+        return
 
     if len(gdf) > 25000:
         print('Need to run splitted upload routine as dataframe has more than 25000 rows')
@@ -196,10 +266,14 @@ def upload_to_ee(gdf, asset_name):
                 
 def save_locally(gdf, ceo_csv=True, gpkg=True, outdir=None):
     
+    # if it is already a feature collection
+    if isinstance(gdf, ee.FeatureCollection):
+        gdf = geemap.ee_to_geopandas(gdf)
+    
     if not outdir:
         outdir = Path.home().joinpath('module_results/sbae_point_analysis')
     
-    if not isinstance(outdir, pathlib.Path):
+    if not isinstance(outdir, Path):
         outdir = Path(outdir)
     
     outdir.mkdir(parents=True, exist_ok=True)
@@ -221,3 +295,17 @@ def save_locally(gdf, ceo_csv=True, gpkg=True, outdir=None):
     if gpkg:
         gdf.to_file(outdir.joinpath('01_sbae_points.gpkg'), driver='GPKG')
         
+        
+
+def plot_samples(aoi, sample_points, grid_cells=None):
+    
+    fig, ax = plt.subplots(1, 1, figsize=(25, 25))
+    if isinstance(aoi, ee.FeatureCollection):
+        geemap.ee_to_geopandas(aoi).to_crs(sample_points.crs).plot(ax=ax, alpha=0.25)
+    else:
+        aoi.to_crs(sample_points.crs).plot(ax=ax, alpha=0.25)  
+
+    if grid_cells is not None:
+        grid_cells.plot(ax=ax, facecolor="none", edgecolor='black', lw=0.1)
+    
+    sample_points.plot(ax=ax, facecolor='red', markersize=.5)

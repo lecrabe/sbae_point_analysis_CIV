@@ -1,4 +1,4 @@
-from helpers.sampling.grid import generate_samples, upload_to_ee, save_locally
+from helpers.sampling.grid import squared_grid, hexagonal_grid, upload_to_ee, save_locally, plot_samples
 
 from helpers.ee.get_time_series import get_time_series
 from helpers.ee.util import processing_grid, get_random_point, get_center_point, set_id 

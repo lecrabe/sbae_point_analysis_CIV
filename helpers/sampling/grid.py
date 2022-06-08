@@ -103,7 +103,7 @@ def upload_to_ee(gdf, asset_name):
             pass
 
         # upload chunks of data to avoi max upload
-        chunks = split_dataframe(point_df)
+        chunks = split_dataframe(gdf)
         tasks = []
 
         for i, chunk in enumerate(chunks):
@@ -198,7 +198,10 @@ def save_locally(gdf, ceo_csv=True, gpkg=True, outdir=None):
     
     if not outdir:
         outdir = Path.home().joinpath('module_results/sbae_point_analysis')
-        
+    
+    if not isinstance(outdir, pathlib.Path):
+        outdir = Path(outdir)
+    
     outdir.mkdir(parents=True, exist_ok=True)
     
     print(f' Saving outputs to {outdir}')
@@ -209,11 +212,11 @@ def save_locally(gdf, ceo_csv=True, gpkg=True, outdir=None):
     gdf['PLOTID'] = gdf['point_id']
     cols = gdf.columns.tolist()
     cols = [e for e in cols if e not in ('LON', 'LAT', 'PLOTID')]
-    new_cols = ['LON', 'LAT', 'PLOTID'] + cols
+    new_cols = ['PLOTID', 'LAT', 'LON'] + cols
     gdf = gdf[new_cols]
     
     if ceo_csv:
-        gdf.to_csv(outdir.joinpath('01_sbae_points.csv'), index=False)
+        gdf[['PLOTID', 'LAT', 'LON']].to_csv(outdir.joinpath('01_sbae_points.csv'), index=False)
         
     if gpkg:
         gdf.to_file(outdir.joinpath('01_sbae_points.gpkg'), driver='GPKG')

@@ -39,14 +39,15 @@ def transform_date(date):
     dates_float = 0 if dates_float == '1970.003' else dates_float
     return dates_float
     
-@retry(tries=10, delay=1, backoff=2)
+#@retry(tries=10, delay=1, backoff=2)
 def extract_ccdc(lsat, points_fc, cell, config_dict):
     
     # extract configuration values
     band = config_dict['ts_params']['band']
     start_monitor = config_dict['ts_params']['start_monitor']
-    end = config_dict['ts_params']['end_date']
+    end = config_dict['ts_params']['end_monitor']
     point_id_name = config_dict['ts_params']['point_id']
+    scale = config_dict['ts_params']['scale']
     
     # get geometry of grid cell and filter points for that
     cell = ee.Geometry.Polygon(cell['coordinates'])
@@ -68,8 +69,10 @@ def extract_ccdc(lsat, points_fc, cell, config_dict):
     tEnd = ccdc.select('tEnd')
     mon_date_array_start = tEnd.multiply(0).add(ee.Date(start_monitor).millis())
     mon_date_array_end = tEnd.multiply(0).add(ee.Date(end).advance(2, 'year').millis())
+    
     # create the date mask
     date_mask = tEnd.gte(mon_date_array_start).And(tEnd.lte(mon_date_array_end))
+    
     # use date mask to mask all of ccdc 
     monitoring_ccdc = get_segments(ccdc, date_mask)
 
@@ -102,7 +105,7 @@ def extract_ccdc(lsat, points_fc, cell, config_dict):
     sampled_points = magnitude.reduceRegions(**{
       "reducer": ee.Reducer.first(),
       "collection": points_fc.filterBounds(cell),
-      "scale": 30,
+      "scale": scale,
       "tileScale": 4
     }).map(pixel_value_nan)
     
@@ -114,9 +117,8 @@ def extract_ccdc(lsat, points_fc, cell, config_dict):
         raise r.raise_for_status()
 
     # write the FC to a geodataframe
-    gdf = gpd.GeoDataFrame.from_features(r.json())
-    
+    gdf = gpd.GeoDataFrame.from_features(r.json()).fillna(0)
     gdf['ccdc_change_date'] = gdf['tBreak'].apply(lambda x: transform_date(x))
     gdf['point_id'] = gdf[point_id_name]
     gdf['ccdc_magnitude'] = gdf[f'{band}_magnitude']
-    return gdf[['ccdc_change_date', 'ccdc_magnitude', 'point_id']]
+    return gdf[['ccdc_change_date', 'ccdc_magnitude', 'point_id', 'geometry']]

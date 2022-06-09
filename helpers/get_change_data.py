@@ -51,8 +51,8 @@ def get_change_data(aoi, fc, config_dict):
     # create image collection (not being changed)
     band = config_dict['ts_params']['band']
     lsat = landsat_collection(
-        config_dict['ts_params']['start_date'], 
-        config_dict['ts_params']['end_date'], 
+        config_dict['ts_params']['start_calibration'], 
+        config_dict['ts_params']['end_monitor'], 
         aoi, 
         bands=['green', 'red', 'nir', 'swir1', 'swir2', band]
     )
@@ -61,9 +61,9 @@ def get_change_data(aoi, fc, config_dict):
     ts_params = config_dict['ts_params']
     band = ts_params['band']
     sat = ts_params['satellite']
-    start_hist = ts_params['start_date']
+    start_hist = ts_params['start_calibration']
     start_mon = ts_params['start_monitor']
-    end_mon = ts_params['end_date']
+    end_mon = ts_params['end_monitor']
     grid_size = ts_params['grid_size']
 
     # get algorithms from config file
@@ -82,24 +82,6 @@ def get_change_data(aoi, fc, config_dict):
         idx, cell, config_file = args
         with open(config_file, "r") as f:
             config_dict = json.load(f)
-        
-        
-        # get parameters from configuration file
-        ts_params = config_dict['ts_params']
-        band = ts_params['band']
-        sat = ts_params['satellite']
-        start_hist = ts_params['start_date']
-        start_mon = ts_params['start_monitor']
-        end_mon = ts_params['end_date']
-        grid_size = ts_params['grid_size']
-        
-        # get algorithms from config file
-        bfast = config_dict['bfast_params']['run']
-        cusum = config_dict['cusum_params']['run']
-        ccdc = config_dict['ccdc_params']['run']
-        ts_metrics = config_dict['ts_metrics_params']['run']
-        bs_slope = config_dict['bs_slope_params']['run']
-        glb_prd = config_dict['global_products']['run']
         
         # create namespace for tmp and outfiles
         param_string = f'{sat}_{band}_{start_hist}_{start_mon}_{end_mon}_{grid_size}'
@@ -200,18 +182,18 @@ def get_change_data(aoi, fc, config_dict):
     args_list = [(*l, config_file) for l in list(enumerate(grid))]
     
     # ---------------debug line--------------------------
-    #cell_computation([14, grid[14], config_file])
+    cell_computation([14, grid[14], config_file])
     # ---------------debug line end--------------------------
     
-    executor = Executor(executor="concurrent_threads", max_workers=config_dict["workers"])
-    for i, task in enumerate(executor.as_completed(
-        func=cell_computation,
-        iterable=args_list
-    )):
-        try:
-            task.result()
-        except ValueError:
-            print("gridcell task failed")
+    #executor = Executor(executor="concurrent_threads", max_workers=config_dict["workers"])
+    #for i, task in enumerate(executor.as_completed(
+    #    func=cell_computation,
+    #    iterable=args_list
+    #)):
+    #    try:
+    #        task.result()
+    #    except ValueError:
+    #        print("gridcell task failed")
     
     files = list(outdir.glob('tmp_results*.pickle'))
     gdf = pd.read_pickle(files[0])

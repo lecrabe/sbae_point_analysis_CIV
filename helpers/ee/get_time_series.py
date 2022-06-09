@@ -7,11 +7,12 @@ import numpy as np
 import requests
 from retry import retry
 
-@retry(tries=10, delay=1, backoff=2)
+#@retry(tries=10, delay=1, backoff=2)
 def get_time_series(imageCollection, points, geometry, config_dict):
     
     band = imageCollection.first().bandNames().getInfo()[0]
     point_id_name = config_dict['ts_params']['point_id']
+    scale = config_dict['ts_params']['scale']
     
     # get geometry of grid cell and filter points for that
     cell = ee.Geometry.Polygon(geometry['coordinates'])
@@ -32,7 +33,7 @@ def get_time_series(imageCollection, points, geometry, config_dict):
         return image.reduceRegions(
             collection = points.filterBounds(geom),
             reducer = ee.Reducer.first().setOutputs([band]),
-            scale = 30            
+            scale = scale            
         ).map(pixel_value_nan)
 
     # apply mapping ufnciton over landsat collection and get the url of the returned FC

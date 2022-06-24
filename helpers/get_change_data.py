@@ -42,8 +42,9 @@ def get_change_data(aoi, fc, config_dict):
         
         if config_dict['ts_params']['grid_size'] != float(old_grid):
             print(' You changed grid size. For this all temporary results are now being deleted.')
-            for file in Path(config_dict['work_dir']).glob('*tmp'):
-                file.unlink()
+            if any(outdir.glob('*tmp')):
+                for file in outdir.glob('*tmp'):
+                    file.unlink()
     else:
         with open(grid_file, 'w') as f:
             f.write(str(config_dict['ts_params']['grid_size']))
@@ -116,7 +117,7 @@ def get_change_data(aoi, fc, config_dict):
                 ### THINGS WE RUN WITHOUT HISTORIC PERIOD #####
 
                 # we cut ts data to monitoring period only
-                df[['dates', 'ts', 'mon_images']] = df.apply(
+                df[['dates_mon', 'ts_mon', 'mon_images']] = df.apply(
                     lambda row: subset_ts(row, config_dict['ts_params']['start_monitor']), axis=1, result_type='expand'
                 )
                 
@@ -182,55 +183,60 @@ def get_change_data(aoi, fc, config_dict):
     args_list = [(*l, config_file) for l in list(enumerate(grid))]
     
     # ---------------debug line--------------------------
-    cell_computation([14, grid[14], config_file])
+    #cell_computation([14, grid[14], config_file])
     # ---------------debug line end--------------------------
     
-    #executor = Executor(executor="concurrent_threads", max_workers=config_dict["workers"])
-    #for i, task in enumerate(executor.as_completed(
-    #    func=cell_computation,
-    #    iterable=args_list
-    #)):
-    #    try:
-    #        task.result()
-    #    except ValueError:
-    #        print("gridcell task failed")
-    
-    files = list(outdir.glob('tmp_results*.pickle'))
-    gdf = pd.read_pickle(files[0])
-    df = pd.DataFrame(columns=gdf.columns)
-    
-    # collect all data into a single dataframe
-    for file in outdir.glob('tmp_results*.pickle'):
-        df2 = pd.read_pickle(file)
-        df = pd.concat([df, df2], ignore_index=True)
-    
-    # try to turn columsn into numerical, where possible
-    for col in df.columns:
+    executor = Executor(executor="concurrent_threads", max_workers=config_dict["workers"])
+    for i, task in enumerate(executor.as_completed(
+        func=cell_computation,
+        iterable=args_list
+    )):
         try:
-            df[col] = pd.to_numeric(df[col])
-        except:
-            pass
-    
-    
-    out_gpkg = outdir.joinpath(f'results_{param_string}.gpkg')
-    out_pckl = outdir.joinpath(f'results_{param_string}.pickle')
-    # write to pickle with all ts and dates
-    df.to_pickle(out_pckl)
-    
-    # write to geo file
-    if 'dates' in df.columns:
-        gdf = gpd.GeoDataFrame(
-                    df.drop(['dates', 'ts'], axis=1), 
-                    crs="EPSG:4326", 
-                    geometry=df['geometry']
-                )
-    else:
-        gdf = gpd.GeoDataFrame(df, crs="EPSG:4326", geometry=df['geometry'])
+            task.result()
+        except ValueError:
+            print("gridcell task failed")
+
+    # collect all data into a single dataframe
+    tmp_files = outdir.glob('tmp_results*.pickle')
+    if any(tmp_files):
         
-    ## write to output and return df# write to output and return df
-    gdf.to_file(out_gpkg, driver='GPKG')
+        files = list(outdir.glob('tmp_results*.pickle'))
+        gdf = pd.read_pickle(files[0])
+        df = pd.DataFrame(columns=gdf.columns)
+        df = df.drop(['dates_mon', 'ts_mon'], axis=1)
+
+        for file in tmp_files:
+            df2 = pd.read_pickle(file)
+            df = pd.concat([df, df2], ignore_index=True)
     
+        # try to turn columsn into numerical, where possible
+        for col in df.columns:
+            try:
+                df[col] = pd.to_numeric(df[col])
+            except:
+                pass
+
+        out_gpkg = outdir.joinpath(f'results_{param_string}.gpkg')
+        out_pckl = outdir.joinpath(f'results_{param_string}.pickle')
+        
+        # write to pickle with all ts and dates
+        df.to_pickle(out_pckl)
+
+        # write to geo file
+        if 'dates' in df.columns:
+            gdf = gpd.GeoDataFrame(
+                        df.drop(['dates', 'ts'], axis=1), 
+                        crs="EPSG:4326", 
+                        geometry=df['geometry']
+                    )
+        else:
+            gdf = gpd.GeoDataFrame(df, crs="EPSG:4326", geometry=df['geometry'])
+
+        ## write to output and return df# write to output and return df
+        gdf.to_file(out_gpkg, driver='GPKG')
+
     
-    for file in Path(config_dict['work_dir']).glob('tmp*'):
-        file.unlink()
+        for file in tmp_files:
+            file.unlink()
+    
     print(" Processing has been finished successfully. Check for final_results files in your output directory.")

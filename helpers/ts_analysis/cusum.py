@@ -105,8 +105,8 @@ def run_cusum_deforest(df, cusum_params):
     nr_of_bootstraps = cusum_params['nr_of_bootstraps']
     args_list, d = [], {}
     for i, row in df.iterrows():
-        dates_float = [date.year + np.round(date.dayofyear/365, 3) for date in row.dates]
-        args_list.append([row.ts, dates_float, row.point_id, nr_of_bootstraps])
+        dates_float = [date.year + np.round(date.dayofyear/365, 3) for date in row.dates_mon]
+        args_list.append([row.ts_mon, dates_float, row.point_id, nr_of_bootstraps])
         
     executor = Executor(executor="concurrent_threads", max_workers=16)
     for i, task in enumerate(executor.as_completed(

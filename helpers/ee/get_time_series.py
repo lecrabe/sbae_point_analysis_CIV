@@ -98,7 +98,7 @@ def structure_ts_data(df, point_id_name):
             point_idx=i,
             point_id=point,
             dates=sub.index,
-            ts=sub.pixel_value.tolist(),  #### THIS CREATES PROBLEMS FOR DIFFERENT INDICES
+            ts=sub.pixel_value.tolist(), 
             images=nr_images,
             geometry=geometry
         )

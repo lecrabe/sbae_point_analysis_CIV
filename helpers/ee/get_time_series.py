@@ -7,7 +7,7 @@ import numpy as np
 import requests
 from retry import retry
 
-#@retry(tries=10, delay=1, backoff=2)
+@retry(tries=10, delay=1, backoff=2)
 def get_time_series(imageCollection, points, geometry, config_dict):
     
     band = imageCollection.first().bandNames().getInfo()[0]
@@ -104,5 +104,5 @@ def structure_ts_data(df, point_id_name):
         )
     
     # turn the dict into a geodataframe and return
-    return  gpd.GeoDataFrame(pd.DataFrame.from_dict(d, orient='index')).set_geometry('geometry')
+    return gpd.GeoDataFrame(pd.DataFrame.from_dict(d, orient='index')).set_geometry('geometry')
             

@@ -1,13 +1,16 @@
 import ee
 from .brdf_correction import apply as apply_brdf
+from .tasseled_cap import apply_tc
 
 def add_indices(image):
     
-    green = image.select('green')
-    red = image.select('red')
-    nir = image.select('nir')
-    swir1 = image.select('swir1')
-    swir2 = image.select('swir2')
+    image4compu = image.select(['blue', 'green', 'red', 'nir', 'swir1', 'swir2']).divide(10000)
+    
+    green = image4compu.select('green')
+    red = image4compu.select('red')
+    nir = image4compu.select('nir')
+    swir1 = image4compu.select('swir1')
+    swir2 = image4compu.select('swir2')
     
     ndvi = (nir.subtract(red)).divide((nir.add(red))).multiply(10000).rename('ndvi').int16() 
     ndmi = (nir.subtract(swir1)).divide((nir.add(swir1))).multiply(10000).rename('ndmi').int16() 
@@ -21,7 +24,7 @@ def add_indices(image):
       "cloud": [.9000, .9600, .8000, .7800, .7200, .6500],
     }
                                            
-    unmixed_image = image.unmix(**{
+    unmixed_image = image4compu.unmix(**{
           "endmembers": [endmembers['gv'], endmembers['shade'], endmembers['npv'], endmembers['soil'], endmembers['cloud']],
           "sumToOne": True,
           "nonNegative": True
@@ -41,7 +44,8 @@ def add_indices(image):
         .set('system:time_start', image.get('system:time_start'))
         .set('system:footprint', image.get('system:footprint'))
     )
-    
+
+
 def bitwiseExtract(value, fromBit, toBit=None):
     if not toBit:
         toBit = fromBit
@@ -64,28 +68,40 @@ def cloudMaskLsatSR(image):
     )
 
 
-def create_collection(collection, start, end, aoi):
+def create_collection(collection, start, end, aoi, max_cc):
     coll = (
         collection
             .filterBounds(aoi)
             .filterDate(start, end)
+            .filter(ee.Filter.lt('CLOUD_COVER', max_cc))
     )
 
     return coll.map(cloudMaskLsatSR)
+
 
 def apply_scale_factors(image):
     opticalBands = image.select('SR_B.').multiply(0.0000275).add(-0.2);
     thermalBands = image.select('ST_B.*').multiply(0.00341802).add(149.0);
     return image.addBands(opticalBands, None, True).addBands(thermalBands, None, True);
 
-def landsat_collection(start, end, aoi, l8=True, l7=True, l5=True, l4=True, brdf=True, bands="ndvi"):
+
+def landsat_collection(start, end, aoi, l9=True, l8=True, l7=True, l5=True, l4=True, brdf=True, bands="ndvi", max_cc=75):
 
     coll = None
-
+    
+    if l9:
+        # create collection (with masking) and add NDVI
+        coll = create_collection(
+            ee.ImageCollection("LANDSAT/LC09/C02/T1_L2"), start, end, aoi, max_cc
+        ).map(apply_scale_factors).select(
+        ['SR_B2', 'SR_B3', 'SR_B4', 'SR_B5', 'SR_B6', 'SR_B7'],
+        ['blue', 'green', 'red', 'nir', 'swir1', 'swir2']
+      )
+        
     if l8:
         # create collection (with masking) and add NDVI
         coll = create_collection(
-            ee.ImageCollection("LANDSAT/LC08/C02/T1_L2"), start, end, aoi
+            ee.ImageCollection("LANDSAT/LC08/C02/T1_L2"), start, end, aoi, max_cc
         ).map(apply_scale_factors).select(
         ['SR_B2', 'SR_B3', 'SR_B4', 'SR_B5', 'SR_B6', 'SR_B7'],
         ['blue', 'green', 'red', 'nir', 'swir1', 'swir2']
@@ -94,7 +110,7 @@ def landsat_collection(start, end, aoi, l8=True, l7=True, l5=True, l4=True, brdf
     if l7:
         # create collection (with masking) and add NDVI
         l7_coll = create_collection(
-            ee.ImageCollection(f"LANDSAT/LE07/C02/T1_L2"), start, end, aoi
+            ee.ImageCollection(f"LANDSAT/LE07/C02/T1_L2"), start, end, aoi, max_cc
             ).map(apply_scale_factors).select(
                 ['SR_B1', 'SR_B2', 'SR_B3', 'SR_B4', 'SR_B5', 'SR_B7'],
                 ['blue', 'green', 'red', 'nir', 'swir1', 'swir2']
@@ -106,7 +122,7 @@ def landsat_collection(start, end, aoi, l8=True, l7=True, l5=True, l4=True, brdf
     if l5:
         # create collection (with masking) and add NDVI
         l5_coll = create_collection(
-            ee.ImageCollection(f"LANDSAT/LT05/C02/T1_L2"), start, end, aoi
+            ee.ImageCollection(f"LANDSAT/LT05/C02/T1_L2"), start, end, aoi, max_cc
             ).map(apply_scale_factors).select(
                 ['SR_B1', 'SR_B2', 'SR_B3', 'SR_B4', 'SR_B5', 'SR_B7'],
                 ['blue', 'green', 'red', 'nir', 'swir1', 'swir2']
@@ -119,7 +135,7 @@ def landsat_collection(start, end, aoi, l8=True, l7=True, l5=True, l4=True, brdf
         # create collection (with masking) and add NDVI
         l4_coll = create_collection(
             ee.ImageCollection(
-                f"LANDSAT/LT04/C02/T1_L2"), start, end, aoi
+                f"LANDSAT/LT04/C02/T1_L2"), start, end, aoi, max_cc
             ).map(apply_scale_factors).select(
                 ['SR_B1', 'SR_B2', 'SR_B3', 'SR_B4', 'SR_B5', 'SR_B7'],
                 ['blue', 'green', 'red', 'nir', 'swir1', 'swir2']
@@ -131,4 +147,16 @@ def landsat_collection(start, end, aoi, l8=True, l7=True, l5=True, l4=True, brdf
     if brdf:
         coll.map(apply_brdf)
 
-    return coll.map(add_indices).select(bands)
+    # scale to int16
+    coll = coll.map(
+        lambda image: image.multiply(10000).int16()
+                    .copyProperties(image)
+                    .set('system:time_start', image.get('system:time_start'))
+                    .set('system:footprint', image.get('system:footprint'))
+    )
+                    
+    # add indices and tasseled cap
+    coll = coll.map(apply_tc).map(add_indices)
+    
+    # return with selected bands
+    return coll.select(bands)

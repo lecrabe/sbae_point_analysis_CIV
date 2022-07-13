@@ -39,7 +39,7 @@ def transform_date(date):
     dates_float = 0 if dates_float == '1970.003' else dates_float
     return dates_float
     
-#@retry(tries=10, delay=1, backoff=2)
+@retry(tries=5, delay=1, backoff=2)
 def extract_ccdc(lsat, points_fc, cell, config_dict):
     
     # extract configuration values

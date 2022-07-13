@@ -51,16 +51,11 @@ def get_change_data(aoi, fc, config_dict):
     
     # create image collection (not being changed)
     band = config_dict['ts_params']['band']
-    lsat = landsat_collection(
-        config_dict['ts_params']['start_calibration'], 
-        config_dict['ts_params']['end_monitor'], 
-        aoi, 
-        bands=['green', 'red', 'nir', 'swir1', 'swir2', band]
-    )
-    
+        
     # get parameters from configuration file
     ts_params = config_dict['ts_params']
     band = ts_params['band']
+    max_cc = ts_params['max_cc']
     sat = ts_params['satellite']
     start_hist = ts_params['start_calibration']
     start_mon = ts_params['start_monitor']
@@ -77,7 +72,15 @@ def get_change_data(aoi, fc, config_dict):
 
     # create namespace for tmp and outfiles
     param_string = f'{sat}_{band}_{start_hist}_{start_mon}_{end_mon}_{grid_size}'
-        
+    
+    lsat = landsat_collection(
+        start_hist, 
+        end_mon, 
+        aoi, 
+        bands=['green', 'red', 'nir', 'swir1', 'swir2', band],
+        max_cc=max_cc
+    )
+    
     def cell_computation(args):
         
         idx, cell, config_file = args
@@ -200,15 +203,19 @@ def get_change_data(aoi, fc, config_dict):
     tmp_files = outdir.glob('tmp_results*.pickle')
     if any(tmp_files):
         
+        # read first fiel and create columns
         files = list(outdir.glob('tmp_results*.pickle'))
         gdf = pd.read_pickle(files[0])
         df = pd.DataFrame(columns=gdf.columns)
-        df = df.drop(['dates_mon', 'ts_mon'], axis=1)
-
+        
+        # read all tmp files and aggregate them
         for file in tmp_files:
             df2 = pd.read_pickle(file)
             df = pd.concat([df, df2], ignore_index=True)
-    
+        
+        # remove the monitoring dates and ts values
+        df = df.drop(['dates_mon', 'ts_mon'], axis=1)
+        
         # try to turn columsn into numerical, where possible
         for col in df.columns:
             try:
@@ -216,6 +223,7 @@ def get_change_data(aoi, fc, config_dict):
             except:
                 pass
 
+        # create namespace for out files
         out_gpkg = outdir.joinpath(f'results_{param_string}.gpkg')
         out_pckl = outdir.joinpath(f'results_{param_string}.pickle')
         
@@ -234,9 +242,15 @@ def get_change_data(aoi, fc, config_dict):
 
         ## write to output and return df# write to output and return df
         gdf.to_file(out_gpkg, driver='GPKG')
-
-    
+        
+        print(" Deleting temporary files")
+        # regather tmp files
+        tmp_files = outdir.glob('tmp_*results*.*')
+        
+        # remove tmp files
         for file in tmp_files:
             file.unlink()
-    
-    print(" Processing has been finished successfully. Check for final_results files in your output directory.")
+        
+        print(" Processing has been finished successfully. Check for final_results files in your output directory.")
+    else:
+        print(" No processing took place, make sure your AOI and sample points DO overlap, have the same reference system and are not empty.")

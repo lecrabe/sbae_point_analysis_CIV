@@ -17,7 +17,7 @@ from helpers.ts_analysis.cusum import run_cusum_deforest, cusum_deforest
 from helpers.ts_analysis.bfast_wrapper import run_bfast_monitor
 from helpers.ts_analysis.bootstrap_slope import run_bs_slope
 from helpers.ts_analysis.timescan import run_timescan_metrics
-from helpers.ts_analysis.helpers import subset_ts
+from helpers.ts_analysis.helpers import subset_ts, remove_outliers, smooth_ts
 
 def get_change_data(aoi, fc, config_dict):
     
@@ -113,6 +113,12 @@ def get_change_data(aoi, fc, config_dict):
             
                 # extract time-series
                 df = get_time_series(lsat.select(band), fc, cell, config_dict)
+
+                if config_dict['ts_params']['outlier_removal']:
+                    df = remove_outliers(df)
+                
+                if config_dict['ts_params']['smooth_ts']:
+                    df = smooth_ts(df)
                 
                 # run bfast
                 df = run_bfast_monitor(df, config_dict['bfast_params']) if bfast else df
@@ -146,22 +152,16 @@ def get_change_data(aoi, fc, config_dict):
                     df = ccdc_df[['point_id', 'ccdc_change_date', 'ccdc_magnitude', 'geometry']]
 
             if glb_prd:
-                glo_products_df = sample_global_products_cell(fc, cell, config_dict)
-                
+                glb_products_df = sample_global_products_cell(aoi, fc, cell, config_dict)
+                print(glb_products_df.columns.tolist().remove('geometry'))
                 if df is not None:
-                    df = pd.merge(glo_products_df[[
-                         'point_id', 'esa_lc20','gfc_tc00','gfc_loss','gfc_year','gfc_gain',
-                         'tmf_main_cl','tmf_subtypes','tmf_1990','tmf_1995','tmf_2000',
-                         'tmf_2005','tmf_2010','tmf_2015','tmf_2020','tmf_def_yr','tmf_deg_yr']],
+                    df = pd.merge(
+                          glb_products_df.drop(['geometry'], axis=1),
                           df, 
                           on='point_id'
                     )
                 else:
-                    df = glo_products_df[['LON', 'LAT', 'PLOTID',
-                         'esa_lc20','gfc_tc00','gfc_loss','gfc_year','gfc_gain',
-                         'tmf_main_cl','tmf_subtypes','tmf_1990','tmf_1995','tmf_2000',
-                         'tmf_2005','tmf_2010','tmf_2015','tmf_2020','tmf_def_yr','tmf_deg_yr',
-                         'geometry']]
+                    df = glb_products_df
             
             #write to tmp pickle file
             df.to_pickle(tmp_file)
@@ -186,18 +186,18 @@ def get_change_data(aoi, fc, config_dict):
     args_list = [(*l, config_file) for l in list(enumerate(grid))]
     
     # ---------------debug line--------------------------
-    #cell_computation([14, grid[14], config_file])
+    cell_computation([1, grid[1], config_file])
     # ---------------debug line end--------------------------
     
-    executor = Executor(executor="concurrent_threads", max_workers=config_dict["workers"])
-    for i, task in enumerate(executor.as_completed(
-        func=cell_computation,
-        iterable=args_list
-    )):
-        try:
-            task.result()
-        except ValueError:
-            print("gridcell task failed")
+    #executor = Executor(executor="concurrent_threads", max_workers=config_dict["workers"])
+    #for i, task in enumerate(executor.as_completed(
+    #    func=cell_computation,
+    #    iterable=args_list
+    #)):
+    #    try:
+    #        task.result()
+    #    except ValueError:
+    #        print("gridcell task failed")
 
     # collect all data into a single dataframe
     tmp_files = outdir.glob('tmp_results*.pickle')
@@ -209,12 +209,14 @@ def get_change_data(aoi, fc, config_dict):
         df = pd.DataFrame(columns=gdf.columns)
         
         # read all tmp files and aggregate them
+        tmp_files = outdir.glob('tmp_results*.pickle')
         for file in tmp_files:
             df2 = pd.read_pickle(file)
             df = pd.concat([df, df2], ignore_index=True)
         
         # remove the monitoring dates and ts values
-        df = df.drop(['dates_mon', 'ts_mon'], axis=1)
+        if 'dates_mon' in df.columns:
+            df = df.drop(['dates_mon', 'ts_mon'], axis=1)
         
         # try to turn columsn into numerical, where possible
         for col in df.columns:

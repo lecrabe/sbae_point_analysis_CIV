@@ -6,74 +6,8 @@ import geopandas as gpd
 from retry import retry
 
 
-def rename_TMF(band):
-    return ee.String(band).replace("Dec", "tmf_",'g')
-
-
-def sample_global_products(points_fc, point_id, outfile=None):
-
-    ## Global Forest Change (Hansen et al., 2013)
-    gfc_col = ee.Image(
-        'UMD/hansen/global_forest_change_2020_v1_8'
-    ).select(
-        ['treecover2000','loss','lossyear','gain'],
-        ['gfc_tc00','gfc_loss','gfc_year','gfc_gain']
-    )
-
-    ## ESA WorldCover 2020
-    esa_20  = ee.Image('ESA/WorldCover/v100/2020').rename('esa_lc20')
-
-    ## Tropical Moist Forest - JRC 2021
-    tmf_annual= ee.ImageCollection('projects/JRC/TMF/v1_2020/AnnualChanges').mosaic()
-    tmf_ann_n = tmf_annual.rename(tmf_annual.bandNames().map(rename_TMF))
-
-    tmf_subtp = ee.ImageCollection('projects/JRC/TMF/v1_2020/TransitionMap_Subtypes').mosaic().rename('tmf_subtypes')
-    tmf_main  = ee.ImageCollection('projects/JRC/TMF/v1_2020/TransitionMap_MainClasses').mosaic().rename('tmf_main_cl')
-    tmf_deg   = ee.ImageCollection('projects/JRC/TMF/v1_2020/DegradationYear').mosaic().rename('tmf_deg_yr')
-    tmf_def   = ee.ImageCollection('projects/JRC/TMF/v1_2020/DeforestationYear').mosaic().rename('tmf_def_yr')
-
-    ##  COMBINE COLLECTIONS
-    glo_ds = (esa_20
-            .addBands(gfc_col)
-            .addBands(tmf_subtp)
-            .addBands(tmf_main)
-            .addBands(tmf_deg)
-            .addBands(tmf_def)
-            .addBands(tmf_ann_n)
-        )
-
-    ## EXTRACT THE DATA TO THE POINTS
-    sampled_points = glo_ds.reduceRegions(**{
-      "reducer": ee.Reducer.first(),
-      "collection": points_fc
-    }).select(
-        [point_id,'esa_lc20','gfc_tc00','gfc_loss','gfc_year','gfc_gain',
-         'tmf_main_cl','tmf_subtypes','tmf_1990','tmf_1995','tmf_2000',
-         'tmf_2005','tmf_2010','tmf_2015','tmf_2020','tmf_def_yr','tmf_deg_yr',
-         '.geo']);
-    
-    ## MAKE AS A DATAFRAME AND EXPORT
-    json = sampled_points.getInfo()
-    gdf = gpd.GeoDataFrame.from_features(json)
-    gdf['LON'] = gdf['geometry'].x
-    gdf['LAT'] = gdf['geometry'].y
-    
-    # sort columns for CEO output
-    gdf['PLOTID'] = gdf[point_id]
-    cols = gdf.columns.tolist()
-    cols = [e for e in cols if e not in ('LON', 'LAT', 'PLOTID')]
-    new_cols = ['LON', 'LAT', 'PLOTID'] + cols
-    gdf = gdf[new_cols]
-    if not outfile:
-        outdir = Path.home()/ "module_results" / "sbae_point_analysis"
-        outdir.mkdir(parents=True, exist_ok=True)
-        gdf.to_csv(Path.home()/ "module_results" / "sbae_point_analysis" / "sbae_ceo.csv", index=False)
-    else: 
-        gdf.to_csv(outfile)
-    return gdf
-
-@retry(tries=10, delay=1, backoff=2)
-def sample_global_products_cell(points_fc, cell, config_dict):
+@retry(tries=3, delay=1, backoff=2)
+def sample_global_products_cell(aoi, points_fc, cell, config_dict):
     
     point_id_name = config_dict['ts_params']['point_id']
     
@@ -81,52 +15,154 @@ def sample_global_products_cell(points_fc, cell, config_dict):
     cell = ee.Geometry.Polygon(cell['coordinates'])
     points = points_fc.filterBounds(cell)
         
-    ## Global Forest Change (Hansen et al., 2013)
-    gfc_col = ee.Image(
-        'UMD/hansen/global_forest_change_2020_v1_8'
-    ).select(
-        ['treecover2000','loss','lossyear','gain'],
-        ['gfc_tc00','gfc_loss','gfc_year','gfc_gain']
-    )
+    # get config dict for global products
+    config = config_dict['global_products']
+    start_monitor = config_dict['ts_params']['start_monitor']
+    end_monitor = config_dict['ts_params']['end_monitor']
     
-    ## ESA WorldCover 2020
-    esa_20  = ee.Image('ESA/WorldCover/v100/2020').rename('esa_lc20')
-
+    if not isinstance(aoi, ee.FeatureCollection):
+        try:
+            aoi = geemap.geopandas_to_ee(aoi)
+        except:
+            raiseError('No compatible AOI format')
+    
+    # create an empty image to which we can add bands as needed
+    dataset = ee.Image.constant(1).rename('to_be_removed')
+    
+    if config['gfc']:
+        ## Global Forest Change (Hansen et al., 2013)
+        dataset = dataset.addBands(
+                    ee.Image('UMD/hansen/global_forest_change_2020_v1_8').select(
+                        ['treecover2000','loss','lossyear','gain'],
+                        ['gfc_tc00','gfc_loss','gfc_lossyear','gfc_gain']
+                    )
+                )
+    
+    
+    if config['esa_lc20']:
+        
+        ## ESA WorldCover 2020
+        dataset = dataset.addBands(ee.Image('ESA/WorldCover/v100/2020').rename('esa_lc20'))
+    
     ## Tropical Moist Forest - JRC 2021
-    tmf_annual= ee.ImageCollection('projects/JRC/TMF/v1_2020/AnnualChanges').mosaic()
-    tmf_ann_n = tmf_annual.rename(tmf_annual.bandNames().map(rename_TMF))
-
-    tmf_subtp = ee.ImageCollection('projects/JRC/TMF/v1_2020/TransitionMap_Subtypes').mosaic().rename('tmf_subtypes')
-    tmf_main  = ee.ImageCollection('projects/JRC/TMF/v1_2020/TransitionMap_MainClasses').mosaic().rename('tmf_main_cl')
-    tmf_deg   = ee.ImageCollection('projects/JRC/TMF/v1_2020/DegradationYear').mosaic().rename('tmf_deg_yr')
-    tmf_def   = ee.ImageCollection('projects/JRC/TMF/v1_2020/DeforestationYear').mosaic().rename('tmf_def_yr')
-
-    ##  COMBINE COLLECTIONS
-    glo_ds = (esa_20
-            .addBands(gfc_col)
-            .addBands(tmf_subtp)
-            .addBands(tmf_main)
-            .addBands(tmf_deg)
-            .addBands(tmf_def)
-            .addBands(tmf_ann_n)
-        ).clip(cell)
-
-    bandlist = [
-        'esa_lc20','gfc_tc00','gfc_loss','gfc_year','gfc_gain',
-        'tmf_main_cl', 'tmf_subtypes','tmf_1990','tmf_1995','tmf_2000',
-        'tmf_2005','tmf_2010','tmf_2015','tmf_2020','tmf_def_yr','tmf_deg_yr'
-    ]
+    if config['tmf']:
+        
+        # get main bands from TMF
+        tmf_sub = ee.ImageCollection('projects/JRC/TMF/v1_2020/TransitionMap_Subtypes').filterBounds(aoi).mosaic().rename('tmf_sub')
+        tmf_main = ee.ImageCollection('projects/JRC/TMF/v1_2020/TransitionMap_MainClasses').filterBounds(aoi).mosaic().rename('tmf_main')
+        tmf_deg = ee.ImageCollection('projects/JRC/TMF/v1_2020/DegradationYear').filterBounds(aoi).mosaic().rename('tmf_degyear')
+        tmf_def = ee.ImageCollection('projects/JRC/TMF/v1_2020/DeforestationYear').filterBounds(aoi).mosaic().rename('tmf_defyear')          
+        dataset = dataset.addBands(tmf_sub).addBands(tmf_main).addBands(tmf_deg).addBands(tmf_def)
+            
+    if config['tmf_years']:
+        
+        # get time-series period
+        start_year = int(start_monitor[0:4])
+        end_year = int(end_monitor[0:4])
+        
+        tmf_years = ee.ImageCollection('projects/JRC/TMF/v1_2020/AnnualChanges').filterBounds(aoi).mosaic()
+        all_bands = tmf_years.bandNames()
+        # create a list of years falling into the monitoring period
+        years_of_interest = ee.List.sequence(start_year, end_year, 1)
+        # create actual namespace for bandnames
+        bands = years_of_interest.map(lambda year: ee.String('Dec').cat(ee.Number(year).format('%.0f')))
+        # check if bands (years) exist in dataset
+        bands = bands.map(lambda band: ee.Algorithms.If(all_bands.contains(band), band, "rmv")).removeAll(["rmv"])
+        # create new namespace
+        new_bands = bands.map(lambda band: ee.String(band).replace("Dec", "tmf_",'g'))
+        
+        # get years of TMF product
+        tmf_all_years = ee.ImageCollection('projects/JRC/TMF/v1_2020/AnnualChanges').mosaic().select(bands, new_bands)
+        dataset = dataset.addBands(tmf_all_years)
     
-    sampled_points = glo_ds.reduceRegions(**{
-      "reducer": ee.Reducer.first(),
-      "collection": points_fc.filterBounds(cell),
-      "scale": 30,
-      "tileScale": 4
-    }).select(
-        [point_id_name,'esa_lc20','gfc_tc00','gfc_loss','gfc_year','gfc_gain',
-         'tmf_main_cl','tmf_subtypes','tmf_1990','tmf_1995','tmf_2000',
-         'tmf_2005','tmf_2010','tmf_2015','tmf_2020','tmf_def_yr','tmf_deg_yr',
-         '.geo']);
+    #if config['copernicus_lc']:
+    #    
+    #    years_of_interest = ee.List.sequence(start_year, end_year, 1)
+        
+        
+    if config['esri_lc']:
+        
+        esri_lulc2020= ee.ImageCollection("projects/sat-io/open-datasets/landcover/ESRI_Global-LULC_10m").filterBounds(aoi).mosaic()
+        dataset = dataset.addBands(esri_lulc2020.rename('esri_lc20'))
+               
+    if config['lang_tree_height']:
+        
+        dataset = dataset.addBands(ee.Image('users/nlang/ETH_GlobalCanopyHeight_2020_10m_v1').rename('lang_tree_height'))
+
+    if config['potapov_tree_height']:
+        
+        potapov = ee.ImageCollection("users/potapovpeter/GEDI_V27").filterBounds(aoi).mosaic().rename('potapov_tree_height')
+        dataset = dataset.addBands(potapov)
+        
+    if config['dynamic_world_tree_prob']:
+    
+        dynamic_coll = (
+            ee.ImageCollection("GOOGLE/DYNAMICWORLD/V1")
+                .filterBounds(aoi)
+                .filterDate(start_monitor, end_monitor)
+        )
+        
+        if dynamic_coll.size().getInfo() != 0:
+            dynamic = (
+                dynamic_coll
+                    .filterBounds(aoi)
+                    .filterDate(start_monitor, end_monitor)
+                    .select('trees')
+                    .reduce(ee.Reducer.mean()
+                      .combine(ee.Reducer.min(), None, True)
+                      .combine(ee.Reducer.max(), None, True)
+                      .combine(ee.Reducer.stdDev(), None, True)
+                    )
+                    .multiply(100)
+                    .uint8()
+                    .clip(aoi)
+                    .select(
+                        ['trees_mean', 'trees_min', 'trees_max', 'trees_stdDev'],
+                        ['dw_tree_prob_mean', 'dw_tree_prob__min', 'dw_tree_prob__max', 'dw_tree_prob__stdDev']
+                    )
+            )
+            
+        dataset = dataset.addBands(dynamic)
+    
+    if config['dynamic_world_class_mode']:
+        dynamic_coll = (
+            ee.ImageCollection("GOOGLE/DYNAMICWORLD/V1")
+                .filterBounds(aoi)
+                .filterDate(start_monitor, end_monitor)
+        )
+        
+        if dynamic_coll.size().getInfo() != 0:
+            dynamic = (dynamic_coll
+                .select('label')
+                .reduce(ee.Reducer.mode())
+                .uint8()
+                .clip(aoi)
+                .select(['label_mode'], ['dw_class_mode'])
+        )
+        dataset = dataset.addBands(dynamic)
+        
+
+        
+    if config['elevation']:
+        glo30 = (
+            ee.ImageCollection("projects/sat-io/open-datasets/FABDEM")
+                  .filterBounds(aoi)
+                  .map(lambda image: ee.Terrain.products(image))
+                  .mosaic()
+                  .select(['b1', 'slope', 'aspect'],['elevation', 'slope', 'aspect'])
+        )
+        dataset = dataset.addBands(glo30)
+            
+    
+    name_of_bands = dataset.bandNames().filter(ee.Filter.neq('item', "to_be_removed"))
+    dataset = dataset.select(name_of_bands).clip(cell)
+
+    sampled_points = dataset.reduceRegions(**{
+        "reducer": ee.Reducer.first(),
+        "collection": points_fc.filterBounds(cell),
+        "scale": 30,
+        "tileScale": 4
+    }).select(name_of_bands.add(point_id_name).add('.geo'))
     
     url = sampled_points.getDownloadUrl('geojson')
     

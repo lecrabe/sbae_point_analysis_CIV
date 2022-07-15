@@ -46,8 +46,8 @@ def run_bs_slope(df, bs_slope_params):
     nr_of_bootstraps = bs_slope_params['nr_of_bootstraps']
     args_list, d = [], {}
     for i, row in df.iterrows():
-        dates_float = [(date.year + np.round(date.dayofyear/365, 3)) for date in row.dates] 
-        args_list.append([row.ts, dates_float, nr_of_bootstraps, row.point_id])
+        dates_float = [(date.year + np.round(date.dayofyear/365, 3)) for date in row.dates_mon] 
+        args_list.append([row.ts_mon, dates_float, nr_of_bootstraps, row.point_id])
         
     executor = Executor(executor="concurrent_threads", max_workers=16)
     for i, task in enumerate(executor.as_completed(

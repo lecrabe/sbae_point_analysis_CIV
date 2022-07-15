@@ -11,7 +11,7 @@ def calc_timescan_metrics(args):
             z_score = np.abs(stats.zscore(np.array(ts)))
             ts_out = np.ma.MaskedArray(ts, mask=z_score > z_threshhold)
         else:
-            ts_out = df.ts
+            ts_out = ts
 
         return np.nanmean(ts_out), np.nanstd(ts_out), np.nanmin(ts_out), np.nanmax(ts_out), point_id
     else:
@@ -24,9 +24,10 @@ def run_timescan_metrics(df, ts_metrics_params):
     """
     outlier_removal, z_threshhold = ts_metrics_params['outlier_removal'], ts_metrics_params['z_threshhold']
     args_list, d = [], {}
-    for i, row in df.iterrows(): 
+    for i, row in df.iterrows():
         args_list.append([row.ts, row.point_id, outlier_removal, z_threshhold])
-        
+        # d[i] = calc_timescan_metrics(args_list[i])
+    
     executor = Executor(executor="concurrent_threads", max_workers=16)
     for i, task in enumerate(executor.as_completed(
         func=calc_timescan_metrics,

@@ -22,6 +22,7 @@ def bootstrap_slope(args):
             # the fraction of sample we want to include (randon)
             #size = np.abs(np.random.normal(0.5, 0.1))
             size = .66
+            
             # select the random samples
             rand_idx = sorted(np.random.choice(np.arange(y.size), int(y.size * size), replace=False))
 
@@ -60,5 +61,5 @@ def run_bs_slope(df, bs_slope_params):
             print("bootstrap task failed")
             
     slope_df = pd.DataFrame.from_dict(d, orient='index')
-    slope_df.columns = ['bs_slope_mean', 'bs_slope_sd', 'bs_slope_min', 'bs_slope_max', 'point_id']
+    slope_df.columns = ['bs_slope_mean', 'bs_slope_sd', 'bs_slope_max', 'bs_slope_min', 'point_id']
     return pd.merge(df, slope_df, on='point_id')    

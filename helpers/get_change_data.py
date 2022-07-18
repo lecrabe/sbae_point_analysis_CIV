@@ -11,6 +11,7 @@ from helpers.ee.get_time_series import get_time_series
 from helpers.ee.util import processing_grid
 from helpers.ee.landsat.landsat_collection import landsat_collection
 from helpers.ee.ccdc import extract_ccdc
+from helpers.ee.landtrendr import run_landtrendr
 from helpers.ee.global_products import sample_global_products_cell
 
 from helpers.ts_analysis.cusum import run_cusum_deforest, cusum_deforest
@@ -66,6 +67,7 @@ def get_change_data(aoi, fc, config_dict):
     bfast = config_dict['bfast_params']['run']
     cusum = config_dict['cusum_params']['run']
     ccdc = config_dict['ccdc_params']['run']
+    landtrendr = config_dict['landtrendr_params']['run']
     ts_metrics = config_dict['ts_metrics_params']['run']
     bs_slope = config_dict['bs_slope_params']['run']
     glb_prd = config_dict['global_products']['run']
@@ -119,6 +121,9 @@ def get_change_data(aoi, fc, config_dict):
                 
                 if config_dict['ts_params']['smooth_ts']:
                     df = smooth_ts(df)
+                
+                # run landtrendr
+                df = run_landtrendr(df, config_dict['landtrendr_params']) if landtrendr else df
                 
                 # run bfast
                 df = run_bfast_monitor(df, config_dict['bfast_params']) if bfast else df

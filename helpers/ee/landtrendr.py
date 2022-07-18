@@ -1,13 +1,50 @@
 import ee
-import requests
 import numpy as np
 import pandas as pd
-import geopandas as gpd
 from retry import retry
+from godale import Executor
 
 
-def extract_landtrendr(time_series, config_dict):
+fake_geometry = ee.Geometry.Polygon([
+    [[
+        14.642002058678267,
+        -1.5396013709395364
+      ],
+      [
+        21.497470808678266,
+        -1.5396013709395364
+      ],
+      [
+        21.497470808678266,
+        2.326761024980699
+      ],
+      [
+        14.642002058678267,
+        2.326761024980699
+      ],
+      [
+        14.642002058678267,
+        -1.5396013709395364
+      ]
+    ]
+  ])
+
+def zip2Image(element):
+  
+    value = ee.List(element).get(0)
+    year = ee.List(element).get(1)
     
+    return (ee.Image.constant(ee.Number.parse(value))
+      .rename('ndvi')
+      .clip(fake_geometry)
+      .set('system:time_start', ee.Date.fromYMD(year, 1, 1).millis())
+      .toFloat()
+           )
+
+@retry(tries=5, delay=1, backoff=2)
+def extract_landtrendr(args_list):
+    
+    years_list, ts_list, point_id, landtrendr_params = args_list
     ts = ee.List([str(value) for value in ts_list])
     dates = ee.List([int(year) for year in years_list])
 
@@ -19,19 +56,11 @@ def extract_landtrendr(time_series, config_dict):
       ts.map(zip2Image)
     )
 
-    runParams = { 
-        'maxSegments':            6,
-        'spikeThreshold':         0.9,
-        'vertexCountOvershoot':   3,
-        'preventOneYearRecovery': True,
-        'recoveryThreshold':      0.25,
-        'pvalThreshold':          0.05,
-        'bestModelProportion':    0.75,
-        'minObservationsNeeded':  3,
-        'timeSeries':            tsee
-    }
+    
+    landtrendr_params.update(timeSeries=tsee)
+    landtrendr_params.pop('run', None)
 
-    lt = ee.Algorithms.TemporalSegmentation.LandTrendr(**runParams).select(["LandTrendr"])
+    lt = ee.Algorithms.TemporalSegmentation.LandTrendr(**landtrendr_params).select(["LandTrendr"])
 
     vertexMask = lt.arraySlice(0, 3, 4); # slice out the 'Is Vertex' row - yes(1)/no(0)
     vertices = lt.arrayMask(vertexMask); # use the 'Is Vertex' row as a mask for all rows
@@ -71,7 +100,43 @@ def extract_landtrendr(time_series, config_dict):
 
     bigFastDist = bigDeltaImg  #.mask(distMask).int16(); // need to set as int16 bit to use connectedPixelCount for minimum mapping unit filter
 
-    return bigFastDist.select('mag').clip(geometry).reduceRegion(**{
+    landtrendr = bigFastDist.select(['mag', 'dur', 'yod', 'rate', 'endYr']).clip(fake_geometry).reduceRegion(**{
       'reducer': ee.Reducer.first(),
       'scale': 3000
     }).getInfo()
+
+    return landtrendr['mag'], landtrendr['dur'], landtrendr['yod'], landtrendr['rate'],  landtrendr['endYr'], point_id
+
+
+def run_landtrendr(df, landtrendr_params):
+
+    args_list, d = [], {}
+
+    for i, row in df.iterrows():
+        
+        # get years of ts
+        years = np.unique([date.year for date in row.dates])
+        
+        # get mean value for each year
+        ts_yearly = []
+        for year in years:
+
+            idx = np.array([True if date.year == year else False for date in row.dates])
+            ts_yearly.append(np.nanmean(np.array(row.ts)[idx]))
+
+        args_list.append([years, ts_yearly, row.point_id, landtrendr_params])
+        
+        
+    executor = Executor(executor="concurrent_threads", max_workers=16)
+    for i, task in enumerate(executor.as_completed(
+        func=extract_landtrendr,
+        iterable=args_list
+    )):
+        try:
+            d[i] = list(task.result())
+        except ValueError:
+            print("landtrendr task failed")
+
+    landtrendr_df = pd.DataFrame.from_dict(d, orient='index')
+    landtrendr_df.columns = ['ltr_magnitude', 'ltr_dur', 'ltr_yod', 'ltr_rate', 'ltr_end_year', 'point_id']
+    return pd.merge(df, landtrendr_df, on='point_id')

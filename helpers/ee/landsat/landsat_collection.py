@@ -15,7 +15,8 @@ def add_indices(image):
     ndvi = (nir.subtract(red)).divide((nir.add(red))).multiply(10000).rename('ndvi').int16() 
     ndmi = (nir.subtract(swir1)).divide((nir.add(swir1))).multiply(10000).rename('ndmi').int16() 
     mndwi = (green.subtract(swir1)).divide((green.add(swir1))).multiply(10000).rename('mdnwi').int16() 
-                                         
+    nbr = (nir.subtract(swir2)).divide((nir.add(swir2))).multiply(10000).rename('nbr').int16()
+    
     endmembers = {
       "gv": [.0500, .0900, .0400, .6100, .3000, .1000],
       "shade": [0, 0, 0, 0, 0, 0],
@@ -39,7 +40,7 @@ def add_indices(image):
       'SOIL': unmixed_image.select('Soil')}
     ).multiply(10000).rename('ndfi').int16() 
         
-    return (image.addBands(ndvi).addBands(ndmi).addBands(mndwi).addBands(ndfi)
+    return (image.addBands(ndvi).addBands(ndmi).addBands(mndwi).addBands(nbr).addBands(ndfi)
         .copyProperties(image)
         .set('system:time_start', image.get('system:time_start'))
         .set('system:footprint', image.get('system:footprint'))

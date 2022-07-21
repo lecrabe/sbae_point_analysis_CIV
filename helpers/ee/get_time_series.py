@@ -10,7 +10,8 @@ from retry import retry
 @retry(tries=5, delay=1, backoff=2)
 def get_time_series(imageCollection, points, geometry, config_dict):
     
-    band = imageCollection.first().bandNames().getInfo()[0]
+    bands = config_dict['ts_params']['bands']
+    ee_bands = ee.List(config_dict['ts_params']['bands'])
     point_id_name = config_dict['ts_params']['point_id']
     scale = config_dict['ts_params']['scale']
     
@@ -27,17 +28,19 @@ def get_time_series(imageCollection, points, geometry, config_dict):
         geom = image.geometry()
         
         def pixel_value_nan(feature):
-            pixel_value = ee.List([feature.get(band), -9999]).reduce(ee.Reducer.firstNonNull())
-            return feature.set({'pixel_value': pixel_value, 'imageID': image.id(),})
+            
+            pixel_values = ee_bands.map(lambda band: ee.List([feature.get(band), -9999]).reduce(ee.Reducer.firstNonNull()))
+            properties = ee.Dictionary.fromLists(ee_bands, pixel_values)
+            return feature.set(properties.combine({'imageID': image.id()}))
                 
         return image.reduceRegions(
             collection = points.filterBounds(geom),
-            reducer = ee.Reducer.first().setOutputs([band]),
+            reducer = ee.Reducer.first(),
             scale = scale            
         ).map(pixel_value_nan)
 
     # apply mapping ufnciton over landsat collection and get the url of the returned FC
-    cell_fc = masked_coll.map(mapOverImgColl).flatten().filter(ee.Filter.neq('pixel_value', -9999));
+    cell_fc = masked_coll.map(mapOverImgColl).flatten().filter(ee.Filter.neq(bands[0], -9999));
     url = cell_fc.getDownloadUrl('geojson')
 
     # Handle downloading the actual pixels.
@@ -52,12 +55,12 @@ def get_time_series(imageCollection, points, geometry, config_dict):
         return None, -1
         
     if len(point_gdf) > 0:
-        return structure_ts_data(point_gdf, point_id_name)
+        return structure_ts_data(point_gdf, point_id_name, bands)
     else:
         return None
     
 
-def structure_ts_data(df, point_id_name):
+def structure_ts_data(df, point_id_name, bands):
     
     df.index = pd.DatetimeIndex(pd.to_datetime(df.imageID.apply(lambda x: x.split('_')[-1]), format='%Y%m%d'))
     
@@ -93,16 +96,19 @@ def structure_ts_data(df, point_id_name):
         # get number of images
         nr_images = len(sub)
         
+        ts_dict= {}
+        for band in bands:
+            ts_dict.update({band: sub[band].tolist()})
+        
         # write everything to a dict
         d[i] = dict(
             point_idx=i,
             point_id=point,
             dates=sub.index,
-            ts=sub.pixel_value.tolist(), 
+            ts=ts_dict, 
             images=nr_images,
             geometry=geometry
         )
     
     # turn the dict into a geodataframe and return
     return gpd.GeoDataFrame(pd.DataFrame.from_dict(d, orient='index')).set_geometry('geometry')
-            

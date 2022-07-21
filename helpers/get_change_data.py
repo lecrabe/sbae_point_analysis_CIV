@@ -50,12 +50,10 @@ def get_change_data(aoi, fc, config_dict):
         with open(grid_file, 'w') as f:
             f.write(str(config_dict['ts_params']['grid_size']))
     
-    # create image collection (not being changed)
-    band = config_dict['ts_params']['band']
-        
     # get parameters from configuration file
     ts_params = config_dict['ts_params']
-    band = ts_params['band']
+    bands = ts_params['bands']
+    ts_band = ts_params['ts_band']
     max_cc = ts_params['max_cc']
     sat = ts_params['satellite']
     start_hist = ts_params['start_calibration']
@@ -73,13 +71,14 @@ def get_change_data(aoi, fc, config_dict):
     glb_prd = config_dict['global_products']['run']
 
     # create namespace for tmp and outfiles
-    param_string = f'{sat}_{band}_{start_hist}_{start_mon}_{end_mon}_{grid_size}'
-    
+    param_string = f'{sat}_{ts_band}_{start_hist}_{start_mon}_{end_mon}_{grid_size}'
+   
+    # create image collection (not being changed)
     lsat = landsat_collection(
         start_hist, 
         end_mon, 
         aoi, 
-        bands=['green', 'red', 'nir', 'swir1', 'swir2', band],
+        bands=bands,
         max_cc=max_cc
     )
     
@@ -90,7 +89,7 @@ def get_change_data(aoi, fc, config_dict):
             config_dict = json.load(f)
         
         # create namespace for tmp and outfiles
-        param_string = f'{sat}_{band}_{start_hist}_{start_mon}_{end_mon}_{grid_size}'
+        param_string = f'{sat}_{ts_band}_{start_hist}_{start_mon}_{end_mon}_{grid_size}'
         tmp_file = outdir.joinpath(f'tmp_results_{idx}_{param_string}.pickle')
         tmp_empty_file = outdir.joinpath(f'tmp_noresults_{idx}_{param_string}.txt')
         
@@ -114,35 +113,35 @@ def get_change_data(aoi, fc, config_dict):
             if bfast or cusum or ts_metrics or bs_slope:
             
                 # extract time-series
-                df = get_time_series(lsat.select(band), fc, cell, config_dict)
-
+                df = get_time_series(lsat.select(bands), fc, cell, config_dict)
+                
                 if config_dict['ts_params']['outlier_removal']:
-                    df = remove_outliers(df)
+                    df = remove_outliers(df, bands, ts_band)
                 
                 if config_dict['ts_params']['smooth_ts']:
-                    df = smooth_ts(df)
+                    df = smooth_ts(df, bands)
                 
                 # run landtrendr
-                df = run_landtrendr(df, config_dict['landtrendr_params']) if landtrendr else df
+                df = run_landtrendr(df, config_dict) if landtrendr else df
                 
                 # run bfast
-                df = run_bfast_monitor(df, config_dict['bfast_params']) if bfast else df
-
+                df = run_bfast_monitor(df, config_dict) if bfast else df
+                
                 ### THINGS WE RUN WITHOUT HISTORIC PERIOD #####
 
                 # we cut ts data to monitoring period only
                 df[['dates_mon', 'ts_mon', 'mon_images']] = df.apply(
-                    lambda row: subset_ts(row, config_dict['ts_params']['start_monitor']), axis=1, result_type='expand'
+                    lambda row: subset_ts(row, config_dict['ts_params']['start_monitor'], bands), axis=1, result_type='expand'
                 )
                 
                 # run cusum
-                df = run_cusum_deforest(df, config_dict['cusum_params']) if cusum else df
+                df = run_cusum_deforest(df, config_dict) if cusum else df
                 
                 # run timescan metrics
-                df = run_timescan_metrics(df, config_dict['ts_metrics_params']) if ts_metrics else df
+                df = run_timescan_metrics(df, config_dict) if ts_metrics else df
 
                 # run bs_slope
-                df = run_bs_slope(df, config_dict['bs_slope_params']) if bs_slope else df
+                df = run_bs_slope(df, config_dict) if bs_slope else df
             
             # run ccdc
             if ccdc:
@@ -203,7 +202,7 @@ def get_change_data(aoi, fc, config_dict):
             task.result()
         except ValueError:
             print("gridcell task failed")
-
+#
     # collect all data into a single dataframe
     tmp_files = outdir.glob('tmp_results*.pickle')
     if any(tmp_files):

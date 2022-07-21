@@ -70,6 +70,7 @@ def cloudMaskLsatSR(image):
 
 
 def create_collection(collection, start, end, aoi, max_cc):
+    
     coll = (
         collection
             .filterBounds(aoi)
@@ -101,12 +102,14 @@ def landsat_collection(start, end, aoi, l9=True, l8=True, l7=True, l5=True, l4=T
         
     if l8:
         # create collection (with masking) and add NDVI
-        coll = create_collection(
+        l8_coll = create_collection(
             ee.ImageCollection("LANDSAT/LC08/C02/T1_L2"), start, end, aoi, max_cc
         ).map(apply_scale_factors).select(
         ['SR_B2', 'SR_B3', 'SR_B4', 'SR_B5', 'SR_B6', 'SR_B7'],
         ['blue', 'green', 'red', 'nir', 'swir1', 'swir2']
       )
+        
+        coll = coll.merge(l8_coll) if coll else l8_coll
 
     if l7:
         # create collection (with masking) and add NDVI

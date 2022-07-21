@@ -87,13 +87,16 @@ def bfast_monitor(args):
     return bfast_date, bfast_magnitude, bfast_means, point_id
 
 
-def run_bfast_monitor(df, bfast_params):
+def run_bfast_monitor(df, config_dict):
     """
     Parallel implementation of the bfast_monitor function
     """
+    
+    bfast_params = config_dict['bfast_params']
+    ts_band = config_dict['ts_params']['ts_band']
     args_list, d = [], {}
     for i, row in df.iterrows():
-        args_list.append([row.ts, row.dates, row.point_id, bfast_params])
+        args_list.append([row.ts[ts_band], row.dates, row.point_id, bfast_params])
         
     executor = Executor(executor="concurrent_threads", max_workers=16)
     for i, task in enumerate(executor.as_completed(

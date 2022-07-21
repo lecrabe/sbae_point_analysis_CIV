@@ -18,14 +18,19 @@ def calc_timescan_metrics(args):
         return 0, 0, 0, 0, point_id
     
     
-def run_timescan_metrics(df, ts_metrics_params):
+def run_timescan_metrics(df, config_dict):
     """
     Parallel implementation of the bootstrap slope function
     """
+    
+    ts_metrics_params = config_dict['ts_metrics_params']
+    ts_band = config_dict['ts_params']['ts_band']
+    
+    
     outlier_removal, z_threshhold = ts_metrics_params['outlier_removal'], ts_metrics_params['z_threshhold']
     args_list, d = [], {}
     for i, row in df.iterrows():
-        args_list.append([row.ts, row.point_id, outlier_removal, z_threshhold])
+        args_list.append([row.ts_mon[ts_band], row.point_id, outlier_removal, z_threshhold])
         # d[i] = calc_timescan_metrics(args_list[i])
     
     executor = Executor(executor="concurrent_threads", max_workers=16)

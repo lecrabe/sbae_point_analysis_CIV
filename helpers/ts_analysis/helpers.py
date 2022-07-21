@@ -5,7 +5,7 @@ import pandas as pd
 import seaborn as sns
 
 
-def subset_ts(row, start_monitor):
+def subset_ts(row, start_monitor, bands):
     """ Helper function to extract only monitoring period
     """
     
@@ -16,38 +16,63 @@ def subset_ts(row, start_monitor):
     dates = row.dates[idx]
     
     # subset ts data
-    ts = np.array(row.ts)[idx].tolist()
+    ts = {}
+    for band in bands:
+        ts[band] = np.array(row.ts[band])[idx].tolist()
     
     # get new image length
-    images = len(ts)
+    images = len(dates)
     
     return dates, ts, images
 
 
-def rolling_mean(dates, ts, interval='60d'):
-    tmp_df = pd.DataFrame(data=ts, index=pd.DatetimeIndex(dates), columns=['ts'])
-    return tmp_df.rolling(interval).mean().ts.tolist()
+def rolling_mean(dates, ts, bands, interval='60d'):
+    
+    d = {}
+    for band in bands:
+        tmp_df = pd.DataFrame(data=ts[band], index=pd.DatetimeIndex(dates), columns=['ts'])
+        d[band] = tmp_df.rolling(interval).mean().ts.tolist()
+    
+    return d
 
 
-def smooth_ts(df):
+def smooth_ts(df, bands):
 
-    df['ts'] = df.apply(lambda x: rolling_mean(x.dates, x.ts), axis=1)
+    df['ts'] = df.apply(lambda x: rolling_mean(x.dates, x.ts, bands), axis=1)
     return df
 
 
-def outlier_removal(dates, ts):
-    ts = np.array(ts).astype(float)
-    z_score = np.abs(stats.zscore(ts, axis=0))
-    ts[z_score > 3] = np.nan
-    tmp_df = pd.DataFrame(data=ts, index=pd.DatetimeIndex(dates), columns=['ts'])
+def outlier_removal(dates, ts, bands, ts_band):
+   
+    # get time-series band to remove outliers
+    out_ts = np.array(ts[ts_band]).astype(float)
+    z_score = np.abs(stats.zscore(out_ts, axis=0))
+    out_ts[z_score > 3] = np.nan
+    
+    # replace in the ts dict
+    ts[ts_band] = out_ts
+    
+    # create dataframe
+    tmp_df = pd.DataFrame(data=ts, index=pd.DatetimeIndex(dates), columns=bands)
+    
+    # drop nans, aplied to all columns
     tmp_df = tmp_df.dropna()
-    return tmp_df.index, tmp_df.ts.tolist()
+    
+    # aggreagte band values to dict to send back to main df
+    d = {}
+    for band in bands:
+        d[band] = tmp_df[band].tolist()
+    
+    return tmp_df.index, d
 
 
-def remove_outliers(df):
-
-    df[['dates', 'ts']] = df.apply(lambda x: outlier_removal(x.dates, x.ts), axis=1, result_type='expand')
+def remove_outliers(df, bands, ts_band):
+    
+    df[['dates', 'ts']] = df.apply(
+        lambda x: outlier_removal(x.dates, x.ts, bands, ts_band), axis=1, result_type='expand'
+    )
     return df
+
 
 
 def plot_timeseries(pickle_file, point_id, point_id_name='point_id'):

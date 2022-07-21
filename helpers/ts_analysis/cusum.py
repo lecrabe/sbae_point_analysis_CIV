@@ -98,15 +98,18 @@ def cusum_deforest(args):
     return date, confidence, magnitude, point_id
 
 
-def run_cusum_deforest(df, cusum_params):
+def run_cusum_deforest(df, config_dict):
     """
     Parallel implementation of the cusum_deforest function
     """
+    
+    cusum_params = config_dict['cusum_params']
+    ts_band = config_dict['ts_params']['ts_band']
     nr_of_bootstraps = cusum_params['nr_of_bootstraps']
     args_list, d = [], {}
     for i, row in df.iterrows():
         dates_float = [date.year + np.round(date.dayofyear/365, 3) for date in row.dates_mon]
-        args_list.append([row.ts_mon, dates_float, row.point_id, nr_of_bootstraps])
+        args_list.append([row.ts_mon[ts_band], dates_float, row.point_id, nr_of_bootstraps])
         
     executor = Executor(executor="concurrent_threads", max_workers=16)
     for i, task in enumerate(executor.as_completed(

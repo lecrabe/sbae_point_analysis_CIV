@@ -108,8 +108,11 @@ def extract_landtrendr(args_list):
     return landtrendr['mag'], landtrendr['dur'], landtrendr['yod'], landtrendr['rate'],  landtrendr['endYr'], point_id
 
 
-def run_landtrendr(df, landtrendr_params):
-
+def run_landtrendr(df, config_dict):
+    
+    landtrendr_params = config_dict['landtrendr_params']
+    ts_band = config_dict['ts_params']['ts_band']
+    
     args_list, d = [], {}
 
     for i, row in df.iterrows():
@@ -122,7 +125,7 @@ def run_landtrendr(df, landtrendr_params):
         for year in years:
 
             idx = np.array([True if date.year == year else False for date in row.dates])
-            ts_yearly.append(np.nanmean(np.array(row.ts)[idx]))
+            ts_yearly.append(np.nanmean(np.array(row.ts[ts_band])[idx]))
 
         args_list.append([years, ts_yearly, row.point_id, landtrendr_params])
         

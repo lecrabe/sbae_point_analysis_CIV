@@ -39,16 +39,19 @@ def bootstrap_slope(args):
         return 0, 0, 0, 0, point_id
 
 
-def run_bs_slope(df, bs_slope_params):
+def run_bs_slope(df, config_dict):
     """
     Parallel implementation of the bootstrap slope function
     """
     
+    bs_slope_params = config_dict['bs_slope_params']
+    ts_band = config_dict['ts_params']['ts_band']
+        
     nr_of_bootstraps = bs_slope_params['nr_of_bootstraps']
     args_list, d = [], {}
     for i, row in df.iterrows():
         dates_float = [(date.year + np.round(date.dayofyear/365, 3)) for date in row.dates_mon] 
-        args_list.append([row.ts_mon, dates_float, nr_of_bootstraps, row.point_id])
+        args_list.append([row.ts_mon[ts_band], dates_float, nr_of_bootstraps, row.point_id])
         
     executor = Executor(executor="concurrent_threads", max_workers=16)
     for i, task in enumerate(executor.as_completed(

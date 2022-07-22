@@ -10,7 +10,7 @@ from datetime import timedelta
 from helpers.ee.get_time_series import get_time_series
 from helpers.ee.util import processing_grid
 from helpers.ee.landsat.landsat_collection import landsat_collection
-from helpers.ee.ccdc import extract_ccdc
+from helpers.ee.ccdc import run_ccdc
 from helpers.ee.landtrendr import run_landtrendr
 from helpers.ee.global_products import sample_global_products_cell
 
@@ -107,10 +107,11 @@ def get_change_data(aoi, fc, config_dict):
         # get geometry of grid cell and filter points for that
         nr_of_points = fc.filterBounds(cell).size().getInfo()
         if nr_of_points > 0:
+            
             print(f' Processing gridcell {idx}')            
-
+            
             # get the timeseries data
-            if bfast or cusum or ts_metrics or bs_slope:
+            if bfast or cusum or ts_metrics or bs_slope or ccdc or landtrendr:
             
                 # extract time-series
                 df = get_time_series(lsat.select(bands), fc, cell, config_dict)
@@ -121,8 +122,21 @@ def get_change_data(aoi, fc, config_dict):
                 if config_dict['ts_params']['smooth_ts']:
                     df = smooth_ts(df, bands)
                 
+                # run ccdc
+                if ccdc:
+                
+                    # check taht we have all bands
+                    check_bpb = all(item in bands for item in config_dict['ccdc_params']['breakpointBands'])
+                    check_tmask = all(item in bands for item in config_dict['ccdc_params']['tmaskBands'])
+                    if not check_bpb or not check_tmask:
+                        print(
+                            ' Warning: Skipping CCDC as not all breakpoint bands are available in the imeseries data'
+                        )
+
+                    df = run_ccdc(df, fc, cell, config_dict)
+
                 # run landtrendr
-                df = run_landtrendr(df, config_dict) if landtrendr else df
+                df = run_landtrendr(df, fc, cell, config_dict) if landtrendr else df
                 
                 # run bfast
                 df = run_bfast_monitor(df, config_dict) if bfast else df
@@ -143,21 +157,8 @@ def get_change_data(aoi, fc, config_dict):
                 # run bs_slope
                 df = run_bs_slope(df, config_dict) if bs_slope else df
             
-            # run ccdc
-            if ccdc:
-                ccdc_df = extract_ccdc(lsat, fc, cell, config_dict)
-                if df is not None:
-                    df = pd.merge(
-                        ccdc_df[['point_id', 'ccdc_change_date', 'ccdc_magnitude']], 
-                        df, 
-                        on='point_id'
-                    )
-                else:
-                    df = ccdc_df[['point_id', 'ccdc_change_date', 'ccdc_magnitude', 'geometry']]
-
             if glb_prd:
                 glb_products_df = sample_global_products_cell(aoi, fc, cell, config_dict)
-                print(glb_products_df.columns.tolist().remove('geometry'))
                 if df is not None:
                     df = pd.merge(
                           glb_products_df.drop(['geometry'], axis=1),
@@ -190,7 +191,7 @@ def get_change_data(aoi, fc, config_dict):
     args_list = [(*l, config_file) for l in list(enumerate(grid))]
     
     # ---------------debug line--------------------------
-    #cell_computation([1, grid[1], config_file])
+    #cell_computation([3, grid[3], config_file])
     # ---------------debug line end--------------------------
     
     executor = Executor(executor="concurrent_threads", max_workers=config_dict["workers"])
@@ -202,7 +203,7 @@ def get_change_data(aoi, fc, config_dict):
             task.result()
         except ValueError:
             print("gridcell task failed")
-#
+
     # collect all data into a single dataframe
     tmp_files = outdir.glob('tmp_results*.pickle')
     if any(tmp_files):

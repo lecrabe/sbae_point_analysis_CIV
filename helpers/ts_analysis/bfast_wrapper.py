@@ -45,16 +45,17 @@ def bfast_monitor(args):
     
     # unpack args
     data, dates, point_id, bfast_params = args
-    
+
     # initialize model
     params = bfast_params.copy()
     params.update(start_monitor=dt.strptime(bfast_params['start_monitor'], '%Y-%m-%d'))
-    del params['run']
+    
+    params.pop('run', None)
     model = BFASTMonitor(**params)
     
     # check if we have dates in the monitoring period
     start_monitor = dt.strptime(bfast_params['start_monitor'], '%Y-%m-%d')
-    mon_dates = [date for date in dates if date > start_monitor]
+    mon_dates = [date for date in dates if date > params['start_monitor']]
     if mon_dates: 
         # fit gistorical period
         model.fit(data, dates)
@@ -81,9 +82,7 @@ def bfast_monitor(args):
         # get magnitude and means
         bfast_magnitude = 0
         bfast_means = 0
-    
-    
-    
+
     return bfast_date, bfast_magnitude, bfast_means, point_id
 
 
@@ -94,10 +93,12 @@ def run_bfast_monitor(df, config_dict):
     
     bfast_params = config_dict['bfast_params']
     ts_band = config_dict['ts_params']['ts_band']
+    
     args_list, d = [], {}
     for i, row in df.iterrows():
         args_list.append([row.ts[ts_band], row.dates, row.point_id, bfast_params])
-        
+        #d[i] = bfast_monitor(args_list[i])
+    
     executor = Executor(executor="concurrent_threads", max_workers=16)
     for i, task in enumerate(executor.as_completed(
         func=bfast_monitor,

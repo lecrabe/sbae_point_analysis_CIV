@@ -114,7 +114,7 @@ def landsat_collection(start, end, aoi, l9=True, l8=True, l7=True, l5=True, l4=T
     if l7:
         # create collection (with masking) and add NDVI
         l7_coll = create_collection(
-            ee.ImageCollection(f"LANDSAT/LE07/C02/T1_L2"), start, end, aoi, max_cc
+            ee.ImageCollection(f"LANDSAT/LE07/C02/T1_L2").filterDate('1970-01-01', '2021-10-30'), start, end, aoi, max_cc
             ).map(apply_scale_factors).select(
                 ['SR_B1', 'SR_B2', 'SR_B3', 'SR_B4', 'SR_B5', 'SR_B7'],
                 ['blue', 'green', 'red', 'nir', 'swir1', 'swir2']

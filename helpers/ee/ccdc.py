@@ -39,86 +39,197 @@ def transform_date(date):
     dates_float = 0 if dates_float == '1970.003' else dates_float
     return dates_float
     
-@retry(tries=5, delay=1, backoff=2)
-def extract_ccdc(lsat, points_fc, cell, config_dict):
+#@retry(tries=5, delay=1, backoff=2)
+#def extract_ccdc(lsat, points_fc, cell, config_dict):
+#    
+#    # extract configuration values
+#    band = config_dict['ts_params']['band']
+#    start_monitor = config_dict['ts_params']['start_monitor']
+#    end = config_dict['ts_params']['end_monitor']
+#    point_id_name = config_dict['ts_params']['point_id']
+#    scale = config_dict['ts_params']['scale']
+#    
+#    # get geometry of grid cell and filter points for that
+#    cell = ee.Geometry.Polygon(cell['coordinates'])
+#    points = points_fc.filterBounds(cell)
+#        
+#    # create image collection (not being changed)
+#    lsat = lsat.filterDate(ee.Date(start_monitor).advance(-2, 'year'), ee.Date(end).advance(2, 'year')).filterBounds(cell)
+#    
+#    #def get_magnitude(point):
+#
+#    ccdc = ee.Algorithms.TemporalSegmentation.Ccdc(
+#        collection=lsat, #.map(lambda image: image.clip(point)),
+#        breakpointBands=['green', 'red', 'nir', 'swir1', 'swir2'],
+#        #breakpointBands=['ndvi'],
+#        dateFormat=2
+#      )
+#
+#    # create array of start of monitoring in shape of tEnd
+#    tEnd = ccdc.select('tEnd')
+#    mon_date_array_start = tEnd.multiply(0).add(ee.Date(start_monitor).millis())
+#    mon_date_array_end = tEnd.multiply(0).add(ee.Date(end).advance(2, 'year').millis())
+#    
+#    # create the date mask
+#    date_mask = tEnd.gte(mon_date_array_start).And(tEnd.lte(mon_date_array_end))
+#    
+#    # use date mask to mask all of ccdc 
+#    monitoring_ccdc = get_segments(ccdc, date_mask)
+#
+#    # mask for highest magnitude in monitoring period
+#    magnitude = monitoring_ccdc.select(band + '_magnitude')
+#    max_abs_magnitude = (magnitude
+#      .abs()
+#      .arrayReduce(ee.Reducer.max(), [0])
+#      .arrayGet([0])
+#      .rename('max_abs_magnitude')
+#    )
+#
+#    mask = magnitude.abs().eq(max_abs_magnitude)
+#    segment = get_segment(monitoring_ccdc, mask)
+#    magnitude = ee.Image(segment.select([band + '_magnitude', 'tBreak', 'tEnd']))
+#
+#    def pixel_value_nan(feature):
+#        pixel_value = ee.List([feature.get(band), -9999]).reduce(ee.Reducer.firstNonNull())
+#        return feature.set({band: pixel_value})
+##
+#        #return point.set(magnitude.reduceRegions(
+#        #  reducer=ee.Reducer.first(),
+#        #  geometry=point.geometry(),
+#        #  scale=30
+#        #))
+#    
+#    #cell_fc = points.map(get_magnitude)
+#    #url = cell_fc.getDownloadUrl('geojson')
+#    
+#    sampled_points = magnitude.reduceRegions(**{
+#      "reducer": ee.Reducer.first(),
+#      "collection": points_fc.filterBounds(cell),
+#      "scale": scale,
+#      "tileScale": 4
+#    }).map(pixel_value_nan)
+#    
+#    url = sampled_points.getDownloadUrl('geojson')
+#
+#    # Handle downloading the actual pixels.
+#    r = requests.get(url, stream=True)
+#    if r.status_code != 200:
+#        raise r.raise_for_status()
+#
+#    # write the FC to a geodataframe
+#    gdf = gpd.GeoDataFrame.from_features(r.json()).fillna(0)
+#    gdf['ccdc_change_date'] = gdf['tBreak'].apply(lambda x: transform_date(x))
+#    gdf['point_id'] = gdf[point_id_name]
+#    gdf['ccdc_magnitude'] = gdf[f'{band}_magnitude']
+#    return gdf[['ccdc_change_date', 'ccdc_magnitude', 'point_id', 'geometry']]
+
+
+#@retry(tries=5, delay=1, backoff=2)
+def run_ccdc(df, points, geometry, config_dict):
     
-    # extract configuration values
-    band = config_dict['ts_params']['band']
-    start_monitor = config_dict['ts_params']['start_monitor']
-    end = config_dict['ts_params']['end_monitor']
+    ccdc_params = config_dict['ccdc_params']
+    ts_band = config_dict['ts_params']['ts_band']
+    bands = config_dict['ts_params']['bands']
     point_id_name = config_dict['ts_params']['point_id']
+    
+    start_calibration = config_dict['ts_params']['start_calibration']
+    start_monitor = config_dict['ts_params']['start_monitor']
+    end_monitor = config_dict['ts_params']['end_monitor']
     scale = config_dict['ts_params']['scale']
     
     # get geometry of grid cell and filter points for that
-    cell = ee.Geometry.Polygon(cell['coordinates'])
-    points = points_fc.filterBounds(cell)
+    cell = ee.Geometry.Polygon(geometry['coordinates'])
+    points = points.filterBounds(geometry)
+    
+    args_list, coll = [], None
+    for i, row in df.iterrows():
+
+        # get dates
+        dates = ee.List([dt.strftime(date, '%Y-%m-%d') for date in row.dates])
+
+        # transform ts dict into way to ingest into imagery
+        ts = []
+        for j in range(len(row.dates)):
+            ts.append([v[j] for v in row.ts.values()])
+
+        # get geom 
+        geom = ee.Feature(row.geometry.__geo_interface__)
+        squared = geom.buffer(scale, 10).bounds()
         
-    # create image collection (not being changed)
-    lsat = lsat.filterDate(ee.Date(start_monitor).advance(-2, 'year'), ee.Date(end).advance(2, 'year')).filterBounds(cell)
+        # merge dates with ts data
+        ts = ee.List(ts).zip(dates)
+
+        def zip_to_image(element):
+
+            values = ee.List(element).get(0)
+            date = ee.List(element).get(1)
+
+            return (ee.Image.constant(values)
+              .rename(list(row.ts.keys())
+                     )
+              .clip(squared)
+              .set('system:time_start', ee.Date.parse('YYYY-MM-dd', date).millis())
+              .toFloat()
+                   )
+
+        # create the image collection
+        tsee = ee.ImageCollection(ts.map(zip_to_image))
+        coll = coll.merge(tsee) if coll else tsee
+        
+        # add collection and remove run from parameter dict
+        ccdc_params.update(collection=coll)
+        ccdc_params.pop('run', None)
+        
+        # run ccdc
+        ccdc = ee.Algorithms.TemporalSegmentation.Ccdc(**ccdc_params)
+        
+        # extract info
+        # create array of start of monitoring in shape of tEnd
+        tEnd = ccdc.select('tEnd')
+        mon_date_array_start = tEnd.multiply(0).add(ee.Date(start_monitor).millis())
+        mon_date_array_end = tEnd.multiply(0).add(ee.Date(end_monitor).millis())
+
+        # create the date mask
+        date_mask = tEnd.gte(mon_date_array_start).And(tEnd.lte(mon_date_array_end))
+
+        # use date mask to mask all of ccdc 
+        monitoring_ccdc = get_segments(ccdc, date_mask)
+
+        # mask for highest magnitude in monitoring period
+        magnitude = monitoring_ccdc.select(ts_band + '_magnitude')
+        max_abs_magnitude = (magnitude
+          .abs()
+          .arrayReduce(ee.Reducer.max(), [0])
+          .arrayGet([0])
+          .rename('max_abs_magnitude')
+        )
+
+        mask = magnitude.abs().eq(max_abs_magnitude)
+        segment = get_segment(monitoring_ccdc, mask)
+        magnitude = ee.Image(segment.select([ts_band + '_magnitude', 'tBreak', 'tEnd']))
+        
+        def pixel_value_nan(feature):
+            pixel_value = ee.List([feature.get(ts_band), -9999]).reduce(ee.Reducer.firstNonNull())
+            return feature.set({ts_band: pixel_value})
     
-    #def get_magnitude(point):
+        sampled_points = magnitude.reduceRegions(**{
+          "reducer": ee.Reducer.first(),
+          "collection": points,
+          "scale": scale,
+          "tileScale": 4
+        }).map(pixel_value_nan)
+        
+        url = sampled_points.getDownloadUrl('geojson')
 
-    ccdc = ee.Algorithms.TemporalSegmentation.Ccdc(
-        collection=lsat, #.map(lambda image: image.clip(point)),
-        breakpointBands=['green', 'red', 'nir', 'swir1', 'swir2'],
-        #breakpointBands=['ndvi'],
-        dateFormat=2
-      )
+        # Handle downloading the actual pixels.
+        r = requests.get(url, stream=True)
+        if r.status_code != 200:
+            raise r.raise_for_status()
 
-    # create array of start of monitoring in shape of tEnd
-    tEnd = ccdc.select('tEnd')
-    mon_date_array_start = tEnd.multiply(0).add(ee.Date(start_monitor).millis())
-    mon_date_array_end = tEnd.multiply(0).add(ee.Date(end).advance(2, 'year').millis())
-    
-    # create the date mask
-    date_mask = tEnd.gte(mon_date_array_start).And(tEnd.lte(mon_date_array_end))
-    
-    # use date mask to mask all of ccdc 
-    monitoring_ccdc = get_segments(ccdc, date_mask)
-
-    # mask for highest magnitude in monitoring period
-    magnitude = monitoring_ccdc.select(band + '_magnitude')
-    max_abs_magnitude = (magnitude
-      .abs()
-      .arrayReduce(ee.Reducer.max(), [0])
-      .arrayGet([0])
-      .rename('max_abs_magnitude')
-    )
-
-    mask = magnitude.abs().eq(max_abs_magnitude)
-    segment = get_segment(monitoring_ccdc, mask)
-    magnitude = ee.Image(segment.select([band + '_magnitude', 'tBreak', 'tEnd']))
-
-    def pixel_value_nan(feature):
-        pixel_value = ee.List([feature.get(band), -9999]).reduce(ee.Reducer.firstNonNull())
-        return feature.set({band: pixel_value})
-#
-        #return point.set(magnitude.reduceRegions(
-        #  reducer=ee.Reducer.first(),
-        #  geometry=point.geometry(),
-        #  scale=30
-        #))
-    
-    #cell_fc = points.map(get_magnitude)
-    #url = cell_fc.getDownloadUrl('geojson')
-    
-    sampled_points = magnitude.reduceRegions(**{
-      "reducer": ee.Reducer.first(),
-      "collection": points_fc.filterBounds(cell),
-      "scale": scale,
-      "tileScale": 4
-    }).map(pixel_value_nan)
-    
-    url = sampled_points.getDownloadUrl('geojson')
-
-    # Handle downloading the actual pixels.
-    r = requests.get(url, stream=True)
-    if r.status_code != 200:
-        raise r.raise_for_status()
-
-    # write the FC to a geodataframe
-    gdf = gpd.GeoDataFrame.from_features(r.json()).fillna(0)
-    gdf['ccdc_change_date'] = gdf['tBreak'].apply(lambda x: transform_date(x))
-    gdf['point_id'] = gdf[point_id_name]
-    gdf['ccdc_magnitude'] = gdf[f'{band}_magnitude']
-    return gdf[['ccdc_change_date', 'ccdc_magnitude', 'point_id', 'geometry']]
+        # write the FC to a geodataframe
+        gdf = gpd.GeoDataFrame.from_features(r.json()).fillna(0)
+        gdf['ccdc_change_date'] = gdf['tBreak'].apply(lambda x: transform_date(x))
+        gdf['ccdc_magnitude'] = gdf[f'{ts_band}_magnitude']
+        return pd.merge(
+            df, gdf[['ccdc_change_date', 'ccdc_magnitude', 'point_id']], on=point_id_name
+        )

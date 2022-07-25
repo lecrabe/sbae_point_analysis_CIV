@@ -7,7 +7,7 @@ import numpy as np
 import requests
 from retry import retry
 
-@retry(tries=5, delay=1, backoff=2)
+#@retry(tries=5, delay=1, backoff=2)
 def get_time_series(imageCollection, points, geometry, config_dict):
     
     bands = config_dict['ts_params']['bands']
@@ -21,7 +21,7 @@ def get_time_series(imageCollection, points, geometry, config_dict):
     
     # mask lsat collection for grid cell
     masked_coll = imageCollection.filterBounds(cell)
-
+    reducer = ee.Reducer.first().setOutputs(bands) if len(bands) == 1 else ee.Reducer.first()
     # mapping function to extract NDVI time-series from each image
     def mapOverImgColl(image):
         
@@ -35,14 +35,14 @@ def get_time_series(imageCollection, points, geometry, config_dict):
                 
         return image.reduceRegions(
             collection = points.filterBounds(geom),
-            reducer = ee.Reducer.first(),
+            reducer = reducer,
             scale = scale            
         ).map(pixel_value_nan)
 
     # apply mapping ufnciton over landsat collection and get the url of the returned FC
     cell_fc = masked_coll.map(mapOverImgColl).flatten().filter(ee.Filter.neq(bands[0], -9999));
     url = cell_fc.getDownloadUrl('geojson')
-
+    
     # Handle downloading the actual pixels.
     r = requests.get(url, stream=True)
     if r.status_code != 200:
@@ -52,7 +52,7 @@ def get_time_series(imageCollection, points, geometry, config_dict):
     try:
         point_gdf = gpd.GeoDataFrame.from_features(r.json())
     except: # JSONDecodeError:
-        return None, -1
+        return None
         
     if len(point_gdf) > 0:
         return structure_ts_data(point_gdf, point_id_name, bands)

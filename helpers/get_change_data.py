@@ -78,8 +78,7 @@ def get_change_data(aoi, fc, config_dict):
         start_hist, 
         end_mon, 
         aoi, 
-        bands=bands,
-        max_cc=max_cc
+        **config_dict['lsat_params']
     )
     
     def cell_computation(args):
@@ -106,15 +105,21 @@ def get_change_data(aoi, fc, config_dict):
         
         # get geometry of grid cell and filter points for that
         nr_of_points = fc.filterBounds(cell).size().getInfo()
+        #print(nr_of_points)
         if nr_of_points > 0:
             
             print(f' Processing gridcell {idx}')            
             
             # get the timeseries data
             if bfast or cusum or ts_metrics or bs_slope or ccdc or landtrendr:
-            
+                
+                #elapsed = time.time() - start_time
+                #print(f'Init: {elapsed}')
                 # extract time-series
                 df = get_time_series(lsat.select(bands), fc, cell, config_dict)
+                
+                #elapsed = time.time() - start_time
+                #print(f'ts: {elapsed}')
                 
                 if config_dict['ts_params']['outlier_removal']:
                     df = remove_outliers(df, bands, ts_band)
@@ -122,41 +127,56 @@ def get_change_data(aoi, fc, config_dict):
                 if config_dict['ts_params']['smooth_ts']:
                     df = smooth_ts(df, bands)
                 
+                #elapsed = time.time() - start_time
+                #print(f'or & smooth: {elapsed}')
                 # run ccdc
                 if ccdc:
                 
                     # check taht we have all bands
                     check_bpb = all(item in bands for item in config_dict['ccdc_params']['breakpointBands'])
-                    check_tmask = all(item in bands for item in config_dict['ccdc_params']['tmaskBands'])
+                    if 'tmaskBands' in config_dict['ccdc_params']:
+                        check_tmask = all(item in bands for item in config_dict['ccdc_params']['tmaskBands'])
+                    else:
+                        check_tmask = True
+                        
                     if not check_bpb or not check_tmask:
                         print(
                             ' Warning: Skipping CCDC as not all breakpoint bands are available in the imeseries data'
                         )
 
                     df = run_ccdc(df, fc, cell, config_dict)
-
+                    #elapsed = time.time() - start_time
+                    #print(f'ccdc: {elapsed}')
+                
                 # run landtrendr
                 df = run_landtrendr(df, fc, cell, config_dict) if landtrendr else df
-                
+                #elapsed = time.time() - start_time
+                #print(f'landtrendr: {elapsed}')
+                      
                 # run bfast
                 df = run_bfast_monitor(df, config_dict) if bfast else df
-                
+                #elapsed = time.time() - start_time
+                #print(f'bfast: {elapsed}')
                 ### THINGS WE RUN WITHOUT HISTORIC PERIOD #####
 
                 # we cut ts data to monitoring period only
                 df[['dates_mon', 'ts_mon', 'mon_images']] = df.apply(
                     lambda row: subset_ts(row, config_dict['ts_params']['start_monitor'], bands), axis=1, result_type='expand'
                 )
-                
+                #elapsed = time.time() - start_time
+                #print(f'subset: {elapsed}')
                 # run cusum
                 df = run_cusum_deforest(df, config_dict) if cusum else df
-                
+                #elapsed = time.time() - start_time
+                #print(f'cusum: {elapsed}')
                 # run timescan metrics
                 df = run_timescan_metrics(df, config_dict) if ts_metrics else df
-
+                #elapsed = time.time() - start_time
+                #print(f'tscan: {elapsed}')
                 # run bs_slope
                 df = run_bs_slope(df, config_dict) if bs_slope else df
-            
+                #elapsed = time.time() - start_time
+                #print(f'slope: {elapsed}')
             if glb_prd:
                 glb_products_df = sample_global_products_cell(aoi, fc, cell, config_dict)
                 if df is not None:
@@ -168,7 +188,7 @@ def get_change_data(aoi, fc, config_dict):
                 else:
                     df = glb_products_df
             
-            #write to tmp pickle file
+            # write to tmp pickle file
             df.to_pickle(tmp_file)
 
             # stop timer and print runtime
@@ -191,7 +211,10 @@ def get_change_data(aoi, fc, config_dict):
     args_list = [(*l, config_file) for l in list(enumerate(grid))]
     
     # ---------------debug line--------------------------
-    #cell_computation([3, grid[3], config_file])
+    #for args in args_list:
+    #    cell_computation(args)
+                  
+    #cell_computation([1, grid[1], config_file])
     # ---------------debug line end--------------------------
     
     executor = Executor(executor="concurrent_threads", max_workers=config_dict["workers"])

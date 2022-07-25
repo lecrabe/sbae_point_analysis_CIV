@@ -48,10 +48,10 @@ def sample_global_products_cell(aoi, points_fc, cell, config_dict):
     if config['tmf']:
         
         # get main bands from TMF
-        tmf_sub = ee.ImageCollection('projects/JRC/TMF/v1_2020/TransitionMap_Subtypes').filterBounds(aoi).mosaic().rename('tmf_sub')
-        tmf_main = ee.ImageCollection('projects/JRC/TMF/v1_2020/TransitionMap_MainClasses').filterBounds(aoi).mosaic().rename('tmf_main')
-        tmf_deg = ee.ImageCollection('projects/JRC/TMF/v1_2020/DegradationYear').filterBounds(aoi).mosaic().rename('tmf_degyear')
-        tmf_def = ee.ImageCollection('projects/JRC/TMF/v1_2020/DeforestationYear').filterBounds(aoi).mosaic().rename('tmf_defyear')          
+        tmf_sub = ee.ImageCollection('projects/JRC/TMF/v1_2020/TransitionMap_Subtypes').filterBounds(cell).mosaic().rename('tmf_sub')
+        tmf_main = ee.ImageCollection('projects/JRC/TMF/v1_2020/TransitionMap_MainClasses').filterBounds(cell).mosaic().rename('tmf_main')
+        tmf_deg = ee.ImageCollection('projects/JRC/TMF/v1_2020/DegradationYear').filterBounds(cell).mosaic().rename('tmf_degyear')
+        tmf_def = ee.ImageCollection('projects/JRC/TMF/v1_2020/DeforestationYear').filterBounds(cell).mosaic().rename('tmf_defyear')          
         dataset = dataset.addBands(tmf_sub).addBands(tmf_main).addBands(tmf_deg).addBands(tmf_def)
             
     if config['tmf_years']:
@@ -60,7 +60,7 @@ def sample_global_products_cell(aoi, points_fc, cell, config_dict):
         start_year = int(start_monitor[0:4])
         end_year = int(end_monitor[0:4])
         
-        tmf_years = ee.ImageCollection('projects/JRC/TMF/v1_2020/AnnualChanges').filterBounds(aoi).mosaic()
+        tmf_years = ee.ImageCollection('projects/JRC/TMF/v1_2020/AnnualChanges').filterBounds(cell).mosaic()
         all_bands = tmf_years.bandNames()
         # create a list of years falling into the monitoring period
         years_of_interest = ee.List.sequence(start_year, end_year, 1)
@@ -82,7 +82,7 @@ def sample_global_products_cell(aoi, points_fc, cell, config_dict):
         
     if config['esri_lc']:
         
-        esri_lulc2020= ee.ImageCollection("projects/sat-io/open-datasets/landcover/ESRI_Global-LULC_10m").filterBounds(aoi).mosaic()
+        esri_lulc2020= ee.ImageCollection("projects/sat-io/open-datasets/landcover/ESRI_Global-LULC_10m").filterBounds(cell).mosaic()
         dataset = dataset.addBands(esri_lulc2020.rename('esri_lc20'))
                
     if config['lang_tree_height']:
@@ -91,22 +91,20 @@ def sample_global_products_cell(aoi, points_fc, cell, config_dict):
 
     if config['potapov_tree_height']:
         
-        potapov = ee.ImageCollection("users/potapovpeter/GEDI_V27").filterBounds(aoi).mosaic().rename('potapov_tree_height')
+        potapov = ee.ImageCollection("users/potapovpeter/GEDI_V27").filterBounds(cell).mosaic().rename('potapov_tree_height')
         dataset = dataset.addBands(potapov)
         
     if config['dynamic_world_tree_prob']:
     
         dynamic_coll = (
             ee.ImageCollection("GOOGLE/DYNAMICWORLD/V1")
-                .filterBounds(aoi)
+                .filterBounds(cell)
                 .filterDate(start_monitor, end_monitor)
         )
         
         if dynamic_coll.size().getInfo() != 0:
             dynamic = (
                 dynamic_coll
-                    .filterBounds(aoi)
-                    .filterDate(start_monitor, end_monitor)
                     .select('trees')
                     .reduce(ee.Reducer.mean()
                       .combine(ee.Reducer.min(), None, True)
@@ -115,7 +113,6 @@ def sample_global_products_cell(aoi, points_fc, cell, config_dict):
                     )
                     .multiply(100)
                     .uint8()
-                    .clip(aoi)
                     .select(
                         ['trees_mean', 'trees_min', 'trees_max', 'trees_stdDev'],
                         ['dw_tree_prob_mean', 'dw_tree_prob__min', 'dw_tree_prob__max', 'dw_tree_prob__stdDev']
@@ -127,7 +124,7 @@ def sample_global_products_cell(aoi, points_fc, cell, config_dict):
     if config['dynamic_world_class_mode']:
         dynamic_coll = (
             ee.ImageCollection("GOOGLE/DYNAMICWORLD/V1")
-                .filterBounds(aoi)
+                .filterBounds(cell)
                 .filterDate(start_monitor, end_monitor)
         )
         
@@ -136,7 +133,6 @@ def sample_global_products_cell(aoi, points_fc, cell, config_dict):
                 .select('label')
                 .reduce(ee.Reducer.mode())
                 .uint8()
-                .clip(aoi)
                 .select(['label_mode'], ['dw_class_mode'])
         )
         dataset = dataset.addBands(dynamic)
@@ -146,7 +142,7 @@ def sample_global_products_cell(aoi, points_fc, cell, config_dict):
     if config['elevation']:
         glo30 = (
             ee.ImageCollection("projects/sat-io/open-datasets/FABDEM")
-                  .filterBounds(aoi)
+                  .filterBounds(cell)
                   .map(lambda image: ee.Terrain.products(image))
                   .mosaic()
                   .select(['b1', 'slope', 'aspect'],['elevation', 'slope', 'aspect'])

@@ -6,7 +6,7 @@ import geopandas as gpd
 from retry import retry
 
 
-@retry(tries=3, delay=1, backoff=2)
+@retry(tries=5, delay=1, backoff=2)
 def sample_global_products_cell(aoi, points_fc, cell, config_dict):
     
     point_id_name = config_dict['ts_params']['point_id']

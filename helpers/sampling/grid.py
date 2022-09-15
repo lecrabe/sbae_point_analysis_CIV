@@ -34,9 +34,13 @@ def random_point(geometry):
 def squared_grid(aoi, spacing, crs='ESRI:54017', sampling_strategy='systematic'):
 
     if isinstance(aoi, ee.FeatureCollection):
-        aoi = geemap.ee_to_geopandas(aoi)
+        aoi = geemap.ee_to_geopandas(aoi).set_crs('epsg:4326', inplace=True)
     
     # reproject
+    if not aoi.crs:
+        crs_original = input('Your AOI does not have a coordinate refernce system (CRS). Please provide the CRS of the AOI (e.g. epsg:4326): ')
+        aoi.set_crs(crs_original, inplace=True)
+        
     aoi = aoi.dissolve().to_crs(crs)
     aoi_geom = aoi.iloc[0]['geometry']
     
@@ -101,8 +105,13 @@ def hexagonal_grid(aoi, resolution, sampling_strategy='systematic', outcrs='ESRI
     
     # in case we have a EE FC
     if isinstance(aoi, ee.FeatureCollection):
-        aoi = geemap.ee_to_geopandas(aoi)
+        aoi = geemap.ee_to_geopandas(aoi).set_crs('epsg:4326', inplace=True)
     
+    
+    if not aoi.crs:
+        crs_original = input('Your AOI does not have a coordinate refernce system (CRS). Please provide the CRS of the AOI (e.g. epsg:4326): ')
+        aoi.set_crs(crs_original, inplace=True)
+            
     # force lat/lon for dggrid
     aoi = aoi.to_crs('EPSG:4326')
     print("Creating hexagonal grid...")

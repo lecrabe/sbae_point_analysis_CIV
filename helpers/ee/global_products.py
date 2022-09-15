@@ -103,6 +103,7 @@ def sample_global_products_cell(aoi, points_fc, cell, config_dict):
         )
         
         if dynamic_coll.size().getInfo() != 0:
+            
             dynamic = (
                 dynamic_coll
                     .select('trees')
@@ -119,7 +120,7 @@ def sample_global_products_cell(aoi, points_fc, cell, config_dict):
                     )
             )
             
-        dataset = dataset.addBands(dynamic)
+            dataset = dataset.addBands(dynamic)
     
     if config['dynamic_world_class_mode']:
         dynamic_coll = (
@@ -134,8 +135,8 @@ def sample_global_products_cell(aoi, points_fc, cell, config_dict):
                 .reduce(ee.Reducer.mode())
                 .uint8()
                 .select(['label_mode'], ['dw_class_mode'])
-        )
-        dataset = dataset.addBands(dynamic)
+            )
+            dataset = dataset.addBands(dynamic)
         
 
         

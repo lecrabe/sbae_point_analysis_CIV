@@ -20,7 +20,7 @@ from helpers.ts_analysis.bootstrap_slope import run_bs_slope
 from helpers.ts_analysis.timescan import run_timescan_metrics
 from helpers.ts_analysis.helpers import subset_ts, remove_outliers, smooth_ts
 
-def get_change_data(aoi, fc, config_dict):
+def get_change_data(fc, config_dict):
     
     outdir = config_dict['work_dir']
     if outdir is None:
@@ -72,7 +72,10 @@ def get_change_data(aoi, fc, config_dict):
 
     # create namespace for tmp and outfiles
     param_string = f'{sat}_{ts_band}_{start_hist}_{start_mon}_{end_mon}_{grid_size}'
-   
+
+    # create aoi based on convex_hull
+    aoi = ee.FeatureCollection(fc.geometry().convexHull())
+    
     # create image collection (not being changed)
     lsat = landsat_collection(
         start_hist, 

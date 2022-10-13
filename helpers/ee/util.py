@@ -77,7 +77,7 @@ def replace_bands(image, bands):
     return result
 
 
-def processing_grid(aoi, dx, dy, marginx=0, marginy=0):
+def processing_grid(aoi, grid_size):
     
     boundbox = aoi.geometry().bounds().buffer(distance=1, proj=ee.Projection('EPSG:4326'))
     
@@ -94,16 +94,16 @@ def processing_grid(aoi, dx, dy, marginx=0, marginy=0):
     ymin = yCoords.reduce('min', [0]).get([0,0])
     ymax = yCoords.reduce('max', [0]).get([0,0])
 
-    xx = ee.List.sequence(xmin, ee.Number(xmax).subtract(ee.Number(dx).multiply(0.9)), dx)
-    yy = ee.List.sequence(ymin, ee.Number(ymax).subtract(ee.Number(dy).multiply(0.9)), dy)
+    xx = ee.List.sequence(xmin, ee.Number(xmax).subtract(ee.Number(grid_size).multiply(0.9)), grid_size)
+    yy = ee.List.sequence(ymin, ee.Number(ymax).subtract(ee.Number(grid_size).multiply(0.9)), grid_size)
 
 
     def mapOverX(x):
         def mapOverY(y):
-            x1 = ee.Number(x).subtract(marginx)
-            x2 = ee.Number(x).add(ee.Number(dx)).add(marginx)
-            y1 = ee.Number(y).subtract(marginy)
-            y2 = ee.Number(y).add(ee.Number(dy)).add(marginy)
+            x1 = ee.Number(x)
+            x2 = ee.Number(x).add(ee.Number(grid_size))
+            y1 = ee.Number(y)
+            y2 = ee.Number(y).add(ee.Number(grid_size))
 
             coords = ee.List([x1, y1, x2, y2]);
             rect = ee.Algorithms.GeometryConstructors.Rectangle(coords, 'EPSG:4326', False);
@@ -113,7 +113,7 @@ def processing_grid(aoi, dx, dy, marginx=0, marginy=0):
     
     cells = xx.map(mapOverX).flatten()
    
-    return ee.FeatureCollection(cells).filterBounds(aoi).aggregate_array('.geo').getInfo(), ee.FeatureCollection(cells).filterBounds(aoi)
+    return ee.FeatureCollection(cells).filterBounds(aoi)
 
 
 def get_random_point(feature):

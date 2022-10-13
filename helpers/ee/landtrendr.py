@@ -6,7 +6,7 @@ import requests
 from retry import retry
 
 @retry(tries=5, delay=1, backoff=2)
-def run_landtrendr(df, points, geometry, config_dict):
+def run_landtrendr(df, points, config_dict):
     
     # get necessary params
     landtrendr_params = config_dict['landtrendr_params']
@@ -17,11 +17,7 @@ def run_landtrendr(df, points, geometry, config_dict):
     bands = config_dict['ts_params']['bands']
     scale = config_dict['ts_params']['scale']
     
-    # get geometry of grid cell and filter points for that
-    cell = ee.Geometry.Polygon(geometry['coordinates'])
-    points = points.filterBounds(geometry)
-    
-        # structure data to Image Collection
+    # structure data to Image Collection
     args_list, d, coll = [], {}, None
     for i, row in df.iterrows():
         
@@ -134,4 +130,4 @@ def run_landtrendr(df, points, geometry, config_dict):
         'endYr':'ltr_end_year'
         }, inplace = True)
 
-    return pd.merge(df, gdf[['ltr_magnitude', 'ltr_dur', 'ltr_yod', 'ltr_rate', 'ltr_end_year', 'point_id']], on=point_id_name)
+    return pd.merge(df, gdf[['ltr_magnitude', 'ltr_dur', 'ltr_yod', 'ltr_rate', 'ltr_end_year', point_id_name]], on=point_id_name)

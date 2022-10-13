@@ -7,21 +7,19 @@ import numpy as np
 import requests
 from retry import retry
 
-@retry(tries=5, delay=1, backoff=2)
-def get_time_series(imageCollection, points, geometry, config_dict):
+@retry(tries=3, delay=1, backoff=2)
+def get_time_series(imageCollection, points, config_dict):
     
     bands = config_dict['ts_params']['bands']
     ee_bands = ee.List(config_dict['ts_params']['bands'])
     point_id_name = config_dict['ts_params']['point_id']
     scale = config_dict['ts_params']['scale']
     
-    # get geometry of grid cell and filter points for that
-    cell = ee.Geometry.Polygon(geometry['coordinates'])
-    points = points.filterBounds(geometry)
-    
     # mask lsat collection for grid cell
+    cell = points.geometry().convexHull(100)
     masked_coll = imageCollection.filterBounds(cell)
     reducer = ee.Reducer.first().setOutputs(bands) if len(bands) == 1 else ee.Reducer.first()
+    
     # mapping function to extract NDVI time-series from each image
     def mapOverImgColl(image):
         
@@ -90,25 +88,23 @@ def structure_ts_data(df, point_id_name, bands):
             sub = sub[sub.pathrow == pr]
         #### LANDSAT ONLY ###########
         
-        # get the geometry
-        geometry = sub.geometry.head(1).values[0]
-
-        # get number of images
-        nr_images = len(sub)
+        # still duplicates may appear between l9 and l8 that would make bfast crash, so we drop
+        sub = sub[~sub.index.duplicated(keep='first')]
         
+        # fill ts dictionary
         ts_dict= {}
         for band in bands:
             ts_dict.update({band: sub[band].tolist()})
         
         # write everything to a dict
-        d[i] = dict(
-            point_idx=i,
-            point_id=point,
-            dates=sub.index,
-            ts=ts_dict, 
-            images=nr_images,
-            geometry=geometry
-        )
+        d[i] = {
+            'point_idx': i,
+             point_id_name: point,
+            'dates': sub.index,
+            'ts': ts_dict, 
+            'images': len(sub),
+            'geometry': sub.geometry.head(1).values[0]
+        }
     
     # turn the dict into a geodataframe and return
     return gpd.GeoDataFrame(pd.DataFrame.from_dict(d, orient='index')).set_geometry('geometry')

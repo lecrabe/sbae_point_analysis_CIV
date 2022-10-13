@@ -106,10 +106,12 @@ def run_cusum_deforest(df, config_dict):
     cusum_params = config_dict['cusum_params']
     ts_band = config_dict['ts_params']['ts_band']
     nr_of_bootstraps = cusum_params['nr_of_bootstraps']
+    point_id_name = config_dict['ts_params']['point_id']
+    
     args_list, d = [], {}
     for i, row in df.iterrows():
         dates_float = [date.year + np.round(date.dayofyear/365, 3) for date in row.dates_mon]
-        args_list.append([row.ts_mon[ts_band], dates_float, row.point_id, nr_of_bootstraps])
+        args_list.append([row.ts_mon[ts_band], dates_float, row[point_id_name], nr_of_bootstraps])
         
     executor = Executor(executor="concurrent_threads", max_workers=16)
     for i, task in enumerate(executor.as_completed(
@@ -122,5 +124,5 @@ def run_cusum_deforest(df, config_dict):
             print("cusum task failed")
             
     cusum_df = pd.DataFrame.from_dict(d, orient='index')
-    cusum_df.columns = ['cusum_change_date', 'cusum_confidence', 'cusum_magnitude', 'point_id']
-    return pd.merge(df, cusum_df, on='point_id')    
+    cusum_df.columns = ['cusum_change_date', 'cusum_confidence', 'cusum_magnitude', point_id_name]
+    return pd.merge(df, cusum_df, on=point_id_name)    

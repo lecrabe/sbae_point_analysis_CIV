@@ -39,8 +39,8 @@ def transform_date(date):
     dates_float = 0 if dates_float == '1970.003' else dates_float
     return dates_float
     
-@retry(tries=5, delay=1, backoff=2)
-def run_ccdc(df, points, geometry, config_dict):
+@retry(tries=3, delay=1, backoff=2)
+def run_ccdc(df, points, config_dict):
     
     ccdc_params = config_dict['ccdc_params']
     ts_band = config_dict['ts_params']['ts_band']
@@ -51,10 +51,6 @@ def run_ccdc(df, points, geometry, config_dict):
     start_monitor = config_dict['ts_params']['start_monitor']
     end_monitor = config_dict['ts_params']['end_monitor']
     scale = config_dict['ts_params']['scale']
-    
-    # get geometry of grid cell and filter points for that
-    cell = ee.Geometry.Polygon(geometry['coordinates'])
-    points = points.filterBounds(geometry)
     
     args_list, coll = [], None
     for i, row in df.iterrows():
@@ -146,5 +142,5 @@ def run_ccdc(df, points, geometry, config_dict):
         gdf['ccdc_change_date'] = gdf['tBreak'].apply(lambda x: transform_date(x))
         gdf['ccdc_magnitude'] = gdf[f'{ts_band}_magnitude']
         return pd.merge(
-            df, gdf[['ccdc_change_date', 'ccdc_magnitude', 'point_id']], on=point_id_name
+            df, gdf[['ccdc_change_date', 'ccdc_magnitude', point_id_name]], on=point_id_name
         )

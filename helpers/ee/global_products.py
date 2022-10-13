@@ -2,30 +2,21 @@ from pathlib import Path
 
 import ee
 import requests
+import pandas as pd
 import geopandas as gpd
 from retry import retry
 
-
-@retry(tries=5, delay=1, backoff=2)
-def sample_global_products_cell(aoi, points_fc, cell, config_dict):
+@retry(tries=3, delay=1, backoff=2)
+def sample_global_products_cell(df, points, config_dict):
     
-    point_id_name = config_dict['ts_params']['point_id']
-    
-    # get geometry of grid cell and filter points for that
-    cell = ee.Geometry.Polygon(cell['coordinates'])
-    points = points_fc.filterBounds(cell)
-        
     # get config dict for global products
     config = config_dict['global_products']
     start_monitor = config_dict['ts_params']['start_monitor']
     end_monitor = config_dict['ts_params']['end_monitor']
+    point_id_name = config_dict['ts_params']['point_id']
     
-    if not isinstance(aoi, ee.FeatureCollection):
-        try:
-            aoi = geemap.geopandas_to_ee(aoi)
-        except:
-            raiseError('No compatible AOI format')
-    
+    cell = ee.FeatureCollection(points.geometry().convexHull())
+   
     # create an empty image to which we can add bands as needed
     dataset = ee.Image.constant(1).rename('to_be_removed')
     
@@ -37,8 +28,7 @@ def sample_global_products_cell(aoi, points_fc, cell, config_dict):
                         ['gfc_tc00','gfc_loss','gfc_lossyear','gfc_gain']
                     )
                 )
-    
-    
+       
     if config['esa_lc20']:
         
         ## ESA WorldCover 2020
@@ -150,34 +140,40 @@ def sample_global_products_cell(aoi, points_fc, cell, config_dict):
         )
         dataset = dataset.addBands(glo30)
             
-    
     name_of_bands = dataset.bandNames().filter(ee.Filter.neq('item', "to_be_removed"))
     dataset = dataset.select(name_of_bands).clip(cell)
-
     sampled_points = dataset.reduceRegions(**{
         "reducer": ee.Reducer.first(),
-        "collection": points_fc.filterBounds(cell),
+        "collection": points,
         "scale": 30,
         "tileScale": 4
     }).select(name_of_bands.add(point_id_name).add('.geo'))
-    
     url = sampled_points.getDownloadUrl('geojson')
     
     # Handle downloading the actual pixels.
     r = requests.get(url, stream=True)
     if r.status_code != 200:
         raise r.raise_for_status()
-
+    
     # write the FC to a geodataframe
     gdf = gpd.GeoDataFrame.from_features(r.json())
     gdf['LON'] = gdf['geometry'].x
     gdf['LAT'] = gdf['geometry'].y
     
     # sort columns for CEO output
-    gdf['point_id'] = gdf[point_id_name]
-    gdf['PLOTID'] = gdf['point_id']
+    gdf['PLOTID'] = gdf[point_id_name]
     cols = gdf.columns.tolist()
     cols = [e for e in cols if e not in ('LON', 'LAT', 'PLOTID')]
     new_cols = ['LON', 'LAT', 'PLOTID'] + cols
     gdf = gdf[new_cols]
+    
+    if df is not None:
+        df = pd.merge(
+              gdf.drop(['geometry'], axis=1),
+              df, 
+              on=point_id_name
+        )
+    else:
+        df = gdf
+            
     return gdf

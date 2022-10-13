@@ -25,12 +25,12 @@ def run_timescan_metrics(df, config_dict):
     
     ts_metrics_params = config_dict['ts_metrics_params']
     ts_band = config_dict['ts_params']['ts_band']
-    
+    point_id_name = config_dict['ts_params']['point_id']
     
     outlier_removal, z_threshhold = ts_metrics_params['outlier_removal'], ts_metrics_params['z_threshhold']
     args_list, d = [], {}
     for i, row in df.iterrows():
-        args_list.append([row.ts_mon[ts_band], row.point_id, outlier_removal, z_threshhold])
+        args_list.append([row.ts_mon[ts_band], row[point_id_name], outlier_removal, z_threshhold])
         # d[i] = calc_timescan_metrics(args_list[i])
     
     executor = Executor(executor="concurrent_threads", max_workers=16)
@@ -44,5 +44,5 @@ def run_timescan_metrics(df, config_dict):
             print("timescan task failed")
             
     tscan_df = pd.DataFrame.from_dict(d, orient='index')
-    tscan_df.columns = ['ts_mean', 'ts_sd', 'ts_min', 'ts_max', 'point_id']
-    return pd.merge(df, tscan_df, on='point_id')    
+    tscan_df.columns = ['ts_mean', 'ts_sd', 'ts_min', 'ts_max', point_id_name]
+    return pd.merge(df, tscan_df, on=point_id_name)    

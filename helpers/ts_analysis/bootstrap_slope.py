@@ -46,12 +46,13 @@ def run_bs_slope(df, config_dict):
     
     bs_slope_params = config_dict['bs_slope_params']
     ts_band = config_dict['ts_params']['ts_band']
-        
+    point_id_name = config_dict['ts_params']['point_id']
     nr_of_bootstraps = bs_slope_params['nr_of_bootstraps']
+    
     args_list, d = [], {}
     for i, row in df.iterrows():
         dates_float = [(date.year + np.round(date.dayofyear/365, 3)) for date in row.dates_mon] 
-        args_list.append([row.ts_mon[ts_band], dates_float, nr_of_bootstraps, row.point_id])
+        args_list.append([row.ts_mon[ts_band], dates_float, nr_of_bootstraps, row[point_id_name]])
         
     executor = Executor(executor="concurrent_threads", max_workers=16)
     for i, task in enumerate(executor.as_completed(
@@ -64,5 +65,5 @@ def run_bs_slope(df, config_dict):
             print("bootstrap task failed")
             
     slope_df = pd.DataFrame.from_dict(d, orient='index')
-    slope_df.columns = ['bs_slope_mean', 'bs_slope_sd', 'bs_slope_max', 'bs_slope_min', 'point_id']
-    return pd.merge(df, slope_df, on='point_id')    
+    slope_df.columns = ['bs_slope_mean', 'bs_slope_sd', 'bs_slope_max', 'bs_slope_min', point_id_name]
+    return pd.merge(df, slope_df, on=point_id_name)    

@@ -18,27 +18,27 @@ from helpers.ts_analysis.cusum import run_cusum_deforest, cusum_deforest
 from helpers.ts_analysis.bfast_wrapper import run_bfast_monitor
 from helpers.ts_analysis.bootstrap_slope import run_bs_slope
 from helpers.ts_analysis.timescan import run_timescan_metrics
+from helpers.ts_analysis.jrc_nrt import run_jrc_nrt
 from helpers.ts_analysis.helpers import subset_ts, remove_outliers, smooth_ts
 
 
 def upload_tmp_asset(asset_root, fc, asset_name, create_folder=True):
     
-    if create_folder:
-        # create temporary folder
-        try:
-            print(' Deleting temporary folder/assets')
-            child_assets = ee.data.listAssets({'parent': f'{asset_root}/tmp_sbae'})['assets']
-            for i, ass in enumerate(child_assets):
-                ee.data.deleteAsset(ass['id']) 
-            
-            ee.data.deleteAsset(f'{asset_root}/tmp_sbae')
-        except:
-            pass
+    # create temporary folder
+    try:
+        print(' Deleting temporary folder/assets')
+        child_assets = ee.data.listAssets({'parent': f'{asset_root}/tmp_sbae'})['assets']
+        for i, ass in enumerate(child_assets):
+            ee.data.deleteAsset(ass['id']) 
 
-        print(' Creating temporary folder')
-        # create tmp folder in case not there
-        ee.data.createAsset({'type': 'folder'}, f'{asset_root}/tmp_sbae')
-        
+        ee.data.deleteAsset(f'{asset_root}/tmp_sbae')
+    except:
+        pass
+
+    print(' Creating temporary folder')
+    # create tmp folder in case not there
+    ee.data.createAsset({'type': 'folder'}, f'{asset_root}/tmp_sbae')
+
     # export 
     print(' Exporting table of (missing) points as temporary Earth Engine asset.')
     exportTask = ee.batch.Export.table.toAsset(
@@ -50,17 +50,23 @@ def upload_tmp_asset(asset_root, fc, asset_name, create_folder=True):
 
     finished = False
     while finished == False:
-        time.sleep(30)
+        
+        # check every 10 seconds
+        time.sleep(10)
         state = exportTask.status()['state']
 
         if state == 'COMPLETED':
             finished = True
+        elif state not in ['COMPLETED', 'READY', 'RUNNING']:
+            raise RuntimeError(
+                ' ERROR: Upload of the temporary point asset to Earth Engine has failed. Please re-run the notebook.\n'
+                ' NOTE that already processed data is not lost.'
+            ) 
         else:
             finished = False
-    
+
     print(' Exporting table of (missing) points was successful.')    
     return ee.FeatureCollection(f'{asset_root}/tmp_sbae/{asset_name}')
-
 
 
 def upload_missing_points(df, point_id_name, fc, asset_name):
@@ -84,7 +90,7 @@ def upload_missing_points(df, point_id_name, fc, asset_name):
         print(f' Found already processed files. Will only consider missing points.')
         print(f' Nr of missing plots: {left_to_process}')
         
-    # in case no points have been processed
+    # in case no points have been processed yet
     else:
         
         try:
@@ -144,9 +150,6 @@ def aggregate_tmp_files(tmpdir):
 
 def extract_to_df(sat_coll, cell_fc, config_file):
     
-    # timer
-    start = time.time()
-    
     # create config file
     with open(config_file) as f:
         config_dict = json.load(f)
@@ -157,6 +160,7 @@ def extract_to_df(sat_coll, cell_fc, config_file):
     ccdc = config_dict['ccdc_params']['run']
     landtrendr = config_dict['landtrendr_params']['run']
     ts_metrics = config_dict['ts_metrics_params']['run']
+    jrc_nrt = config_dict['jrc_nrt_params']['run']
     bs_slope = config_dict['bs_slope_params']['run']
     glb_prd = config_dict['global_products']['run']
     
@@ -168,19 +172,15 @@ def extract_to_df(sat_coll, cell_fc, config_file):
     
     # get the timeseries data
     df = None 
-    if bfast or cusum or ts_metrics or bs_slope or ccdc or landtrendr:
+    if bfast or cusum or ts_metrics or bs_slope or ccdc or landtrendr or jrc_nrt:
 
         # extract time-series
         df = get_time_series(sat_coll.select(bands), cell_fc, config_dict)
-        #elapsed = time.time() - start_time
-        #print(f'ts: {elapsed}')
-
+        
         # remove outliers and smooth if set
-        df = remove_outliers(df, bands, ts_band) if config_dict['ts_params']['outlier_removal'] else df     
-        df = smooth_ts(df, bands) if config_dict['ts_params']['smooth_ts'] else df
-        #elapsed = time.time() - start_time
-        #print(f'or & smooth: {elapsed}')
-
+        df = remove_outliers(df, bands, ts_band) if ts_params['outlier_removal'] else df     
+        df = smooth_ts(df, bands) if ts_params['smooth_ts'] else df
+        
         # run ccdc
         if ccdc:
 
@@ -197,42 +197,31 @@ def extract_to_df(sat_coll, cell_fc, config_file):
                 )
 
             df = run_ccdc(df, cell_fc, config_dict)
-            #elapsed = time.time() - start_time
-            #print(f'ccdc: {elapsed}')
-
+            
         # run landtrendr
         df = run_landtrendr(df, cell_fc, config_dict) if landtrendr else df
-        #elapsed = time.time() - start_time
-        #print(f'landtrendr: {elapsed}')
-
+        
         # run bfast
         df = run_bfast_monitor(df, config_dict) if bfast else df
-        #elapsed = time.time() - start_time
-        #print(f'bfast: {elapsed}')
+        
+        # run jrc package
+        df = run_jrc_nrt(df, config_dict) if jrc_nrt else df
+        
         ### THINGS WE RUN WITHOUT HISTORIC PERIOD #####
-
         # we cut ts data to monitoring period only
         df[['dates_mon', 'ts_mon', 'mon_images']] = df.apply(
             lambda row: subset_ts(row, config_dict['ts_params']['start_monitor'], bands), axis=1, result_type='expand'
         )
-        #elapsed = time.time() - start_time
-        #print(f'subset: {elapsed}')
         
         # run cusum
         df = run_cusum_deforest(df, config_dict) if cusum else df
-        #elapsed = time.time() - start_time
-        #print(f'cusum: {elapsed}')
         
         # run timescan metrics
         df = run_timescan_metrics(df, config_dict) if ts_metrics else df
-        #elapsed = time.time() - start_time
-        #print(f'tscan: {elapsed}')
         
         # run bs_slope
         df = run_bs_slope(df, config_dict) if bs_slope else df
-        #elapsed = time.time() - start_time
-        #print(f'slope: {elapsed}')
-    
+        
     df = sample_global_products_cell(df, cell_fc, config_dict) if glb_prd else df
         
     return df
@@ -354,21 +343,22 @@ def get_change_data(fc, config_dict):
                     print(f' More than {max_points_per_chunk} points in chunk {idx+1}. Considering respective points at smaller chunk size level.')
            
             # ---------------debug line--------------------------
-            #for args in args_list:
-            #    cell_computation(args)
+            for args in args_list:
+                cell_computation(args)
 
             #cell_computation([1, grid[1], config_file])
             # ---------------debug line end--------------------------
 
-            executor = Executor(executor="concurrent_threads", max_workers=config_dict["workers"])
-            for i, task in enumerate(executor.as_completed(
-                func=cell_computation,
-                iterable=args_list
-            )):
-                try:
-                    task.result()
-                except ValueError:
-                    print("gridcell task failed")
+            #executor = Executor(executor="concurrent_threads", max_workers=config_dict["workers"])
+            #for i, task in enumerate(executor.as_completed(
+            #    func=cell_computation,
+            #    iterable=args_list
+            #)):
+            #    try:
+            #        task.result()
+            #    except:
+            #        print(" Gridcell task failed. Trying to process the respective points at a lower chunk size.")
+            #        pass
         
         if any(tmpdir.iterdir()):
             df = aggregate_tmp_files(tmpdir)

@@ -10,6 +10,7 @@ from helpers.ts_analysis.cusum import run_cusum_deforest, cusum_deforest
 from helpers.ts_analysis.bfast_wrapper import run_bfast_monitor
 from helpers.ts_analysis.bootstrap_slope import run_bs_slope
 from helpers.ts_analysis.timescan import run_timescan_metrics
+from helpers.ts_analysis.jrc_nrt import run_jrc_nrt
 from helpers.ts_analysis.helpers import subset_ts, plot_timeseries, smooth_ts, remove_outliers, plot_stats_per_class
 
 from helpers.get_change_data import get_change_data

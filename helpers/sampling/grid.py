@@ -98,6 +98,8 @@ def squared_grid(aoi, spacing, crs='ESRI:54017', sampling_strategy='systematic')
     
     print('Remove points outside AOI...')
     point_gdf = point_gdf[point_gdf.geometry.within(aoi_geom)]
+    
+    print(f'Sampling grid consists of {len(point_gdf)} points.')
     return grid_gdf, point_gdf
 
 
@@ -145,6 +147,8 @@ def hexagonal_grid(aoi, resolution, sampling_strategy='systematic', outcrs='ESRI
     
     print('Remove points outside AOI...')
     point_gdf = point_gdf[point_gdf.geometry.within(aoi_geom)]
+    
+    print(f'Sampling grid consists of {len(point_gdf)} points.')
     return grid_gdf.to_crs(outcrs), point_gdf.to_crs(outcrs)
 
 

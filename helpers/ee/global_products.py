@@ -139,7 +139,7 @@ def sample_global_products_cell(df, points, config_dict):
                   .select(['b1', 'slope', 'aspect'],['elevation', 'slope', 'aspect'])
         )
         dataset = dataset.addBands(glo30)
-            
+    
     name_of_bands = dataset.bandNames().filter(ee.Filter.neq('item', "to_be_removed"))
     dataset = dataset.select(name_of_bands).clip(cell)
     sampled_points = dataset.reduceRegions(**{
@@ -176,4 +176,4 @@ def sample_global_products_cell(df, points, config_dict):
     else:
         df = gdf
             
-    return gdf
+    return df

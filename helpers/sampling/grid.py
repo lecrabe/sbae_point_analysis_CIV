@@ -18,6 +18,7 @@ dggrid_instance = DGGRIDv7(
     silent=True
 )
 
+
 def random_point(geometry):
     
     bounds = geometry.bounds
@@ -307,8 +308,7 @@ def save_locally(gdf, ceo_csv=True, gpkg=True, outdir=None):
         
     if gpkg:
         gdf.to_file(outdir.joinpath('01_sbae_points.gpkg'), driver='GPKG')
-        
-        
+          
 
 def plot_samples(aoi, sample_points, grid_cells=None):
     

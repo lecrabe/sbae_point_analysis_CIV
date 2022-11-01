@@ -326,7 +326,8 @@ def get_change_data(fc, config_dict):
                     df = extract_to_df(lsat, cell_fc, config_file)
 
                     # write to tmp pickle file
-                    df.to_pickle(tmp_file)
+                    if df is not None:
+                        df.to_pickle(tmp_file)
 
                     # stop timer and print runtime
                     elapsed = time.time() - start_time
@@ -343,22 +344,22 @@ def get_change_data(fc, config_dict):
                     print(f' More than {max_points_per_chunk} points in chunk {idx+1}. Considering respective points at smaller chunk size level.')
            
             # ---------------debug line--------------------------
-            for args in args_list:
-                cell_computation(args)
+            #for args in args_list:
+            #    cell_computation(args)
 
             #cell_computation([1, grid[1], config_file])
             # ---------------debug line end--------------------------
 
-            #executor = Executor(executor="concurrent_threads", max_workers=config_dict["workers"])
-            #for i, task in enumerate(executor.as_completed(
-            #    func=cell_computation,
-            #    iterable=args_list
-            #)):
-            #    try:
-            #        task.result()
-            #    except:
-            #        print(" Gridcell task failed. Trying to process the respective points at a lower chunk size.")
-            #        pass
+            executor = Executor(executor="concurrent_threads", max_workers=config_dict["workers"])
+            for i, task in enumerate(executor.as_completed(
+                func=cell_computation,
+                iterable=args_list
+            )):
+                try:
+                    task.result()
+                except:
+                    print(" Gridcell task failed. Trying to process the respective points at a lower chunk size.")
+                    pass
         
         if any(tmpdir.iterdir()):
             df = aggregate_tmp_files(tmpdir)

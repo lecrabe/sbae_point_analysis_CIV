@@ -39,7 +39,7 @@ def squared_grid(aoi, spacing, crs='ESRI:54017', sampling_strategy='systematic')
     
     # reproject
     if not aoi.crs:
-        crs_original = input('Your AOI does not have a coordinate refernce system (CRS). Please provide the CRS of the AOI (e.g. epsg:4326): ')
+        crs_original = input('Your AOI does not have a coordinate reference system (CRS). Please provide the CRS of the AOI (e.g. epsg:4326): ')
         aoi.set_crs(crs_original, inplace=True)
         
     aoi = aoi.dissolve().to_crs(crs)
@@ -124,9 +124,9 @@ def hexagonal_grid(aoi, resolution, sampling_strategy='systematic', outcrs='ESRI
         clip_geom=aoi.dissolve().geometry.values[0]
     )
     
-    aoi = aoi.dissolve().to_crs('ESRI:54017')
+    aoi = aoi.dissolve().to_crs(outcrs)
     aoi_geom = aoi.iloc[0]['geometry']
-    gdf = grid.to_crs('ESRI:54017')
+    gdf = grid.to_crs(outcrs)
 
     if sampling_strategy == 'systematic':
         # take centroid
